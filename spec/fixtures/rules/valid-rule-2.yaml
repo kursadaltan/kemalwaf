@@ -1,0 +1,14 @@
+---
+rules:
+  - id: 941100
+    msg: "XSS Attack Detected"
+    variables:
+      - ARGS
+      - BODY
+      - HEADERS
+    pattern: "(?i)(<script|javascript:|onerror=)"
+    action: deny
+    transforms:
+      - url_decode
+      - lowercase
+

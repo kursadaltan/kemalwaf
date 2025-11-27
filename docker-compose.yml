@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  waf:
+    build: .
+    platform: linux/amd64
+    ports:
+      - "3060:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./config/waf.yml:/app/config/waf.yml:ro
+      - ./rules:/app/rules:ro
+    depends_on:
+      - upstream
+    networks:
+      - waf-network
+
+  upstream:
+    image: ealen/echo-server:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+    profiles:
+      - upstream
+    networks:
+      - waf-network
+
+networks:
+  waf-network:
+    driver: bridge

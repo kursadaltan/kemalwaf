@@ -1,0 +1,80 @@
+# Kemal WAF Configuration File
+# Copy this file to waf.yml and edit the values
+
+waf:
+  # WAF mode: enforce, observe, disabled
+  mode: enforce
+  
+  # Global default upstream (optional, for backward compatibility)
+  # This is used if no domain-specific upstream exists
+  upstream:
+    url: http://localhost:8080
+    timeout: 30s
+    retry: 3
+    
+  # Multi-domain configuration
+  # Exact match is performed for each domain (subdomains must be defined separately)
+  domains:
+    "example.com":
+      default_upstream: "http://localhost:8080"
+      upstream_host_header: "example.com"  # If empty, taken from upstream URI
+      preserve_original_host: true
+
+    "api.example.com":
+      default_upstream: "http://localhost:8081"
+      upstream_host_header: "api.example.com"
+      preserve_original_host: true
+      verify_ssl: false  # Skip SSL certificate verification (for self-signed or internal certificates)
+      
+  # Rate limiting configuration
+  rate_limiting:
+    enabled: true
+    default_limit: 250
+    window: 1s
+    block_duration: 60s
+    
+  # IP filtering configuration
+  ip_filtering:
+    enabled: true
+    whitelist_file: config/ip_whitelist.txt
+    blacklist_file: config/ip_blacklist.txt
+    
+  # GeoIP filtering configuration
+  geoip:
+    enabled: false
+    mmdb_file: config/Maxmind/GeoLite2-Country.mmdb
+    blocked_countries: []  # Example: [CN, RU, KP]
+    allowed_countries: []   # If empty, all countries are allowed
+    
+  # Rules configuration
+  rules:
+    directory: rules/
+    reload_interval: 5s
+    
+  # Logging configuration
+  logging:
+    level: info
+    format: json
+    audit_file: logs/audit.log
+    log_dir: logs
+    max_size_mb: 100
+    retention_days: 30
+    audit_max_size_mb: 50
+    audit_retention_days: 90
+    enable_audit: true
+    queue_size: 10000
+    batch_size: 100
+    flush_interval_ms: 1000
+    
+  # Metrics configuration
+  metrics:
+    enabled: true
+    port: 9090
+    
+  # Connection pooling configuration
+  connection_pooling:
+    enabled: true
+    pool_size: 20         # Pool size for each upstream (optimized: first 10 created immediately)
+    max_size: 100          # Max pool size
+    idle_timeout: 300s    # Idle connection timeout
+    health_check: true    # Connection health check

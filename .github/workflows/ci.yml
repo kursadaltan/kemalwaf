@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential git
+
+      - name: Install dependencies
+        run: shards install
+
+      - name: Build LibInjection
+        run: |
+          git clone https://github.com/libinjection/libinjection.git /tmp/libinjection
+          cd /tmp/libinjection/src
+          gcc -c -O2 -fPIC -DLIBINJECTION_VERSION=\"5.0.0\" \
+              libinjection_sqli.c libinjection_xss.c libinjection_html5.c reader.c \
+              -I.
+          ar rcs /tmp/libinjection.a *.o
+          cd ${{ github.workspace }}
+          mkdir -p lib/libinjection
+          cp /tmp/libinjection.a lib/libinjection/
+          cp /tmp/libinjection/src/libinjection.h /tmp/libinjection/src/libinjection_sqli.h /tmp/libinjection/src/libinjection_xss.h /tmp/libinjection/src/libinjection_html5.h /tmp/libinjection/src/libinjection_error.h lib/libinjection/
+          rm -rf /tmp/libinjection
+
+      - name: Run unit tests
+        run: |
+          ABS_LIB_PATH="$(pwd)/lib/libinjection"
+          crystal spec --link-flags "-L$ABS_LIB_PATH -linjection" \
+            spec/rule_loader_spec.cr spec/evaluator_spec.cr spec/proxy_client_spec.cr \
+            spec/metrics_spec.cr spec/ip_filter_spec.cr spec/rate_limiter_spec.cr
+
+      - name: Build WAF binary
+        run: |
+          mkdir -p bin
+          ABS_LIB_PATH="$(pwd)/lib/libinjection"
+          crystal build --link-flags "-L$ABS_LIB_PATH -linjection" src/waf.cr -o bin/kemal-waf
+
+      - name: Check formatting
+        run: crystal tool format --check
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential git
+
+      - name: Install dependencies
+        run: shards install
+
+      - name: Check formatting
+        run: crystal tool format --check

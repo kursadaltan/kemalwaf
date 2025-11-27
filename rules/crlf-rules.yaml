@@ -1,0 +1,65 @@
+---
+rules:
+  - id: 934100
+    name: "CRLF Injection Attack Detected"
+    msg: "CRLF Injection Attack Detected"
+    category: "crlf"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%0d%0a|%0a%0d|\\r\\n|\\n\\r|%0d|%0a|%5c%72%5c%6e)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-crlf"
+
+  - id: 934200
+    name: "CRLF Injection Attack Detected - Header Injection"
+    msg: "CRLF Injection Attack Detected - Header Injection"
+    category: "crlf"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%0d%0a.*?:|%0a.*?:|%0d.*?:|\\r\\n.*?:|\\n.*?:|\\r.*?:)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-crlf"
+
+  - id: 934300
+    name: "CRLF Injection Attack Detected - HTTP Response Splitting"
+    msg: "CRLF Injection Attack Detected - HTTP Response Splitting"
+    category: "crlf"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%0d%0a.*?HTTP/|%0a.*?HTTP/|%0d.*?HTTP/|\\r\\n.*?HTTP/|\\n.*?HTTP/|\\r.*?HTTP/)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-crlf"
+

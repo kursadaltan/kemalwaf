@@ -1,0 +1,11 @@
+.git
+.gitignore
+README.md
+TESTING.md
+*.md
+.DS_Store
+bin/
+lib/
+.shards/
+shard.lock
+

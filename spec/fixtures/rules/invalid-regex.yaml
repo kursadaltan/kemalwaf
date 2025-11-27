@@ -1,0 +1,9 @@
+---
+rules:
+  - id: 999998
+    msg: "Invalid Regex Test"
+    variables:
+      - ARGS
+    pattern: "[invalid(regex"
+    action: deny
+

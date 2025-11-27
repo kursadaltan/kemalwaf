@@ -1,0 +1,148 @@
+---
+rules:
+  - id: 932100
+    name: "Command Injection Attack Detected - Semicolon"
+    msg: "Command Injection Attack Detected - Semicolon"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(;\\s*(ls|cat|rm|mv|cp|chmod|chown|wget|curl|nc|netcat|bash|sh|python|perl|ruby|php|exec|system|popen|passthru|shell_exec|proc_open|eval|id|whoami|uname|hostname|pwd|env|ps|netstat|ifconfig|ipconfig|ping|nslookup|dig))"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"
+
+  - id: 932200
+    name: "Command Injection Attack Detected - Pipe"
+    msg: "Command Injection Attack Detected - Pipe"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\|\\s*(cat|ls|rm|mv|cp|chmod|chown|wget|curl|nc|netcat|bash|sh|python|perl|ruby|php|exec|system|popen|passthru|shell_exec|proc_open|eval|id|whoami|uname|hostname|pwd|env|ps|netstat|ifconfig|ipconfig|ping|nslookup|dig))"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"
+
+  - id: 932300
+    name: "Command Injection Attack Detected - Backtick"
+    msg: "Command Injection Attack Detected - Backtick"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(`[^`]*(ls|cat|rm|mv|cp|chmod|chown|wget|curl|nc|netcat|bash|sh|python|perl|ruby|php|exec|system|popen|passthru|shell_exec|proc_open|eval|base64_decode|gzip|gunzip|tar|zip|unzip|id|whoami|uname|hostname|pwd|env|ps|netstat|ifconfig|ipconfig|ping|nslookup|dig)[^`]*`)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"
+
+  - id: 932400
+    name: "Command Injection Attack Detected - Command Chaining"
+    msg: "Command Injection Attack Detected - Command Chaining"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(&&\\s*(ls|cat|rm|mv|cp|chmod|chown|wget|curl|nc|netcat|bash|sh|python|perl|ruby|php|exec|system|popen|passthru|shell_exec|proc_open|eval|id|whoami|uname|hostname|pwd|env|ps|netstat|ifconfig|ipconfig|ping|nslookup|dig))"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"
+
+  - id: 932500
+    name: "Command Injection Attack Detected - Dollar Sign"
+    msg: "Command Injection Attack Detected - Dollar Sign"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\$\\{[^}]*\\}|\\$\\([^)]*\\)|\\$[a-zA-Z_][a-zA-Z0-9_]*)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"
+
+  - id: 932600
+    name: "Command Injection Attack Detected - Raw Request Patterns"
+    msg: "Command Injection Attack Detected - Raw Request Patterns"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(cmd\\s*=\\s*|command\\s*=\\s*|exec\\s*=\\s*|system\\s*=\\s*|shell\\s*=\\s*)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"
+
+  - id: 932700
+    name: "Command Injection Attack Detected - PHP Code Execution"
+    msg: "Command Injection Attack Detected - PHP Code Execution"
+    category: "rce"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\$\\{@print|\\$\\{@eval|\\$\\{@exec|\\$\\{@system|\\$\\{@passthru|\\$\\{@shell_exec|\\$\\{@proc_open)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: REQUEST_FILENAME
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-rce"

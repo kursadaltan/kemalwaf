@@ -1,0 +1,83 @@
+# Crystal
+/docs/
+/lib/
+!/lib/libinjection/
+!/lib/libinjection/**
+/bin/
+/.shards/
+*.dwarf
+shard.lock
+/conf
+
+# IDE & Editors
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+secrets/
+credentials/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+docker-compose.override.yml
+.dockerignore.local
+
+# Testing
+coverage/
+.crystal/
+spec/reports/
+
+# Reports
+reports/
+
+# IDE specific
+cursor.project.yaml
+
+# Config (large files)
+config/Maxmind/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Temporary
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# Build artifacts
+dist/
+build/
+release/
+
+# Python (for tools)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+venv/
+.venv/
+

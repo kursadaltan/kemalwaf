@@ -1,0 +1,55 @@
+---
+rules:
+  - id: 930100
+    name: "Path Traversal Attack Detected - Local File Inclusion"
+    msg: "Path Traversal Attack Detected - Local File Inclusion"
+    category: "lfi"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\.\\./|etc/passwd)"
+    variables:
+      - type: ARGS
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-lfi"
+
+  - id: 930200
+    name: "Path Traversal Attack Detected - URL Encoded"
+    msg: "Path Traversal Attack Detected - URL Encoded"
+    category: "lfi"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%2e%2e%2f|%252e%252e%252f)"
+    variables:
+      - type: ARGS
+      - type: REQUEST_LINE
+    transforms:
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-lfi"
+
+  - id: 930300
+    name: "Path Traversal Attack Detected - Null Byte Injection"
+    msg: "Path Traversal Attack Detected - Null Byte Injection"
+    category: "lfi"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%00|%2500|%c0%80|%e0%80%80|%f0%80%80%80)"
+    variables:
+      - type: ARGS
+      - type: REQUEST_URI
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-lfi"

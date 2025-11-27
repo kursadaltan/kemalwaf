@@ -1,0 +1,82 @@
+---
+rules:
+  - id: 936100
+    name: "Mail Injection Attack Detected - Header Injection"
+    msg: "Mail Injection Attack Detected - Header Injection"
+    category: "mail-injection"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%0d%0a|%0a|%0d|\\r\\n|\\n|\\r).*?(to|cc|bcc|from|subject|reply-to|return-path):"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-mail-injection"
+
+  - id: 936200
+    name: "Mail Injection Attack Detected - SMTP Command Injection"
+    msg: "Mail Injection Attack Detected - SMTP Command Injection"
+    category: "mail-injection"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%0d%0a|%0a|%0d|\\r\\n|\\n|\\r).*?(MAIL\\s+FROM|RCPT\\s+TO|DATA|QUIT|HELO|EHLO)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-mail-injection"
+
+  - id: 936300
+    name: "Mail Injection Attack Detected - Multiple Recipients"
+    msg: "Mail Injection Attack Detected - Multiple Recipients"
+    category: "mail-injection"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(to|cc|bcc)\\s*[:=]\\s*[^@]+@[^@]+\\s*[,;]\\s*[^@]+@[^@]+"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-mail-injection"
+
+  - id: 936400
+    name: "Mail Injection Attack Detected - BCC Injection"
+    msg: "Mail Injection Attack Detected - BCC Injection"
+    category: "mail-injection"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(bcc\\s*[:=]|Bcc\\s*[:=]|BCC\\s*[:=])"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-mail-injection"
+

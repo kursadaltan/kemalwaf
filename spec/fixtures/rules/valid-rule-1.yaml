@@ -1,0 +1,14 @@
+---
+rules:
+  - id: 942100
+    msg: "SQL Injection Attack Detected"
+    variables:
+      - ARGS
+      - BODY
+      - REQUEST_LINE
+    pattern: "(?i)(union.*select|select.*from|insert.*into)"
+    action: deny
+    transforms:
+      - url_decode
+      - lowercase
+

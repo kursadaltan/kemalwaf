@@ -1,0 +1,102 @@
+---
+rules:
+  - id: 937100
+    name: "Malicious User-Agent Detected - SQL Injection"
+    msg: "Malicious User-Agent Detected - SQL Injection"
+    category: "user-agent"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(union.*select|select.*from|insert.*into|delete.*from|drop.*table|update.*set|exec.*\\(|execute.*\\(|'.*or.*'.*=.*'|\".*or.*\".*=.*\"|;.*drop|;.*delete|;.*insert|--.*$|/\\*.*\\*/)"
+    variables:
+      - type: HEADERS
+        names: ["User-Agent"]
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-user-agent"
+      - "attack-sqli"
+
+  - id: 937200
+    name: "Malicious User-Agent Detected - XSS"
+    msg: "Malicious User-Agent Detected - XSS"
+    category: "user-agent"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(<script|javascript:|onerror=|onload=|<iframe|<object|<embed|eval\\(|alert\\(|document\\.cookie|document\\.write|confirm\\(|prompt\\(|onclick=|onmouseover=)"
+    variables:
+      - type: HEADERS
+        names: ["User-Agent"]
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-user-agent"
+      - "attack-xss"
+
+  - id: 937300
+    name: "Malicious User-Agent Detected - Command Injection"
+    msg: "Malicious User-Agent Detected - Command Injection"
+    category: "user-agent"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(;\\s*(ls|cat|rm|mv|cp|chmod|chown|wget|curl|nc|netcat|bash|sh|python|perl|ruby|php|exec|system|popen|passthru|shell_exec|proc_open|eval|id|whoami|uname|hostname|pwd|env|ps|netstat|ifconfig|ipconfig|ping|nslookup|dig)|\\|\\s*(ls|cat|rm|mv|cp|bash|sh|python|perl|ruby|php|exec|system)|`[^`]*(ls|cat|rm|mv|cp|bash|sh|python|perl|ruby|php|exec|system)[^`]*`|&&\\s*(ls|cat|rm|mv|cp|bash|sh|python|perl|ruby|php|exec|system))"
+    variables:
+      - type: HEADERS
+        names: ["User-Agent"]
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-user-agent"
+      - "attack-rce"
+
+  - id: 937400
+    name: "Malicious User-Agent Detected - Path Traversal"
+    msg: "Malicious User-Agent Detected - Path Traversal"
+    category: "user-agent"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\.\\./|\\.\\.\\\\|%2e%2e%2f|%252e%252e%252f|etc/passwd|boot\\.ini|win\\.ini)"
+    variables:
+      - type: HEADERS
+        names: ["User-Agent"]
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-user-agent"
+      - "attack-lfi"
+
+  - id: 937500
+    name: "Malicious User-Agent Detected - CRLF Injection"
+    msg: "Malicious User-Agent Detected - CRLF Injection"
+    category: "user-agent"
+    severity: "HIGH"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%0d%0a|%0a%0d|\\r\\n|\\n\\r|%0d|%0a|%5c%72%5c%6e)"
+    variables:
+      - type: HEADERS
+        names: ["User-Agent"]
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-user-agent"
+      - "attack-crlf"
+

@@ -1,0 +1,17 @@
+# IP Blacklist
+# Bu dosya blacklist'e eklenecek IP adreslerini içerir
+# Her satırda bir IP adresi veya CIDR notasyonu olabilir
+# Yorum satırları # ile başlar
+
+# Örnek: Tek IP adresi
+# 10.0.0.100
+
+# Örnek: CIDR network (tüm subnet)
+# 10.0.0.0/24
+
+# Örnek: Bilinen kötü IP'ler (örnek)
+# 192.0.2.1
+# 198.51.100.0/24
+
+# Production'da kullanmak için yukarıdaki örnekleri kaldırın ve gerçek IP'leri ekleyin
+

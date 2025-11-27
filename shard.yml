@@ -1,0 +1,19 @@
+name: kemal-waf
+version: 1.0.0
+
+authors:
+  - kemal-waf contributors
+
+crystal: ">= 1.12.0"
+
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+    branch: master
+
+targets:
+  kemal-waf:
+    main: src/waf.cr
+
+license: Apache-2.0
+

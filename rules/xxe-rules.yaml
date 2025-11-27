@@ -1,0 +1,82 @@
+---
+rules:
+  - id: 933100
+    name: "XML External Entity (XXE) Attack Detected"
+    msg: "XML External Entity (XXE) Attack Detected"
+    category: "xxe"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(<!ENTITY|<!DOCTYPE.*ENTITY|SYSTEM\\s+['\"]|PUBLIC\\s+['\"]|%[a-zA-Z_][a-zA-Z0-9_]*;|&[a-zA-Z_][a-zA-Z0-9_]*;)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xxe"
+
+  - id: 933200
+    name: "XXE Attack Detected - File Protocol"
+    msg: "XXE Attack Detected - File Protocol"
+    category: "xxe"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(file://|file:///|file:////)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xxe"
+
+  - id: 933300
+    name: "XXE Attack Detected - External Entity Reference"
+    msg: "XXE Attack Detected - External Entity Reference"
+    category: "xxe"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(<!ENTITY\\s+%\\s+[^>]*SYSTEM|<!ENTITY\\s+[^>]*SYSTEM\\s+['\"]file://|<!ENTITY\\s+[^>]*SYSTEM\\s+['\"]http://|<!ENTITY\\s+[^>]*SYSTEM\\s+['\"]https://|<!ENTITY\\s+[^>]*SYSTEM\\s+['\"]php://|<!ENTITY\\s+[^>]*SYSTEM\\s+['\"]expect://)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xxe"
+
+  - id: 933400
+    name: "XXE Attack Detected - Parameter Entity"
+    msg: "XXE Attack Detected - Parameter Entity"
+    category: "xxe"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%[a-zA-Z_][a-zA-Z0-9_]*;|&[a-zA-Z_][a-zA-Z0-9_]*;|<!ENTITY\\s+%\\s+)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xxe"
+

@@ -1,0 +1,135 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, development ]
+  pull_request:
+    branches: [ main, development ]
+  release:
+    types: [ created ]
+
+env:
+  DOCKER_IMAGE_NAME: kemalwaf
+  REGISTRY: docker.io
+
+jobs:
+  format-check:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Crystal
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal-version: '1.12.0'
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential git
+
+      - name: Install dependencies
+        run: shards install
+
+      - name: Check code format
+        run: crystal tool format --check
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Crystal
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal-version: '1.12.0'
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential git
+
+      - name: Install dependencies
+        run: shards install
+
+      - name: Build LibInjection
+        run: |
+          git clone https://github.com/libinjection/libinjection.git /tmp/libinjection
+          cd /tmp/libinjection/src
+          gcc -c -O2 -fPIC -DLIBINJECTION_VERSION=\"5.0.0\" \
+              libinjection_sqli.c libinjection_xss.c libinjection_html5.c reader.c \
+              -I.
+          ar rcs /tmp/libinjection.a *.o
+          cd ${{ github.workspace }}
+          mkdir -p lib/libinjection
+          cp /tmp/libinjection.a lib/libinjection/
+          cp /tmp/libinjection/src/libinjection.h /tmp/libinjection/src/libinjection_sqli.h /tmp/libinjection/src/libinjection_xss.h /tmp/libinjection/src/libinjection_html5.h /tmp/libinjection/src/libinjection_error.h lib/libinjection/
+          rm -rf /tmp/libinjection
+
+      - name: Run unit tests
+        run: |
+          ABS_LIB_PATH="$(pwd)/lib/libinjection"
+          crystal spec --link-flags "-L$ABS_LIB_PATH -linjection" \
+            spec/rule_loader_spec.cr spec/evaluator_spec.cr spec/proxy_client_spec.cr \
+            spec/metrics_spec.cr spec/ip_filter_spec.cr spec/rate_limiter_spec.cr
+
+  docker-build-test:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.DOCKER_IMAGE_NAME }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker-push:
+    name: Build and Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [format-check, test, docker-build-test]
+    if: github.event_name == 'release' && github.event.action == 'created'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${VERSION#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      - name: Image digest
+        run: echo "Image pushed with digest ${{ steps.build.outputs.digest }}"
+

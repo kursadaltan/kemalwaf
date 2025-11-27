@@ -1,0 +1,86 @@
+---
+rules:
+  - id: 935100
+    name: "NoSQL Injection Attack Detected - MongoDB Operators"
+    msg: "NoSQL Injection Attack Detected - MongoDB Operators"
+    category: "nosql-injection"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\$where|\\$ne|\\$gt|\\$gte|\\$lt|\\$lte|\\$in|\\$nin|\\$regex|\\$exists|\\$elemMatch|\\$size|\\$all|\\$mod|\\$text|\\$search|\\$or|\\$and|\\$not|\\$nor)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: COOKIE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-nosql-injection"
+
+  - id: 935200
+    name: "NoSQL Injection Attack Detected - JavaScript in Query"
+    msg: "NoSQL Injection Attack Detected - JavaScript in Query"
+    category: "nosql-injection"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\$where\\s*[:=]\\s*['\"]?\\s*function|\\$where\\s*[:=]\\s*['\"]?\\s*\\(|this\\.|return\\s+true|return\\s+false)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: COOKIE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-nosql-injection"
+
+  - id: 935300
+    name: "NoSQL Injection Attack Detected - Boolean Operators"
+    msg: "NoSQL Injection Attack Detected - Boolean Operators"
+    category: "nosql-injection"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\$or\\s*[:=]|\\$and\\s*[:=]|\\$nor\\s*[:=]|\\$not\\s*[:=])"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: COOKIE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-nosql-injection"
+
+  - id: 935400
+    name: "NoSQL Injection Attack Detected - Comparison Operators"
+    msg: "NoSQL Injection Attack Detected - Comparison Operators"
+    category: "nosql-injection"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(\\$ne\\s*[:=]|\\$gt\\s*[:=]|\\$gte\\s*[:=]|\\$lt\\s*[:=]|\\$lte\\s*[:=]|\\$in\\s*[:=]|\\$nin\\s*[:=])"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+      - type: COOKIE
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-nosql-injection"
+

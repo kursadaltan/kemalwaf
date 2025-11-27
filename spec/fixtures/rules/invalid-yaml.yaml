@@ -1,0 +1,9 @@
+---
+rules:
+  - id: 999999
+    msg: "Invalid YAML Test
+    variables:
+      - ARGS
+    pattern: "test"
+    action: deny
+

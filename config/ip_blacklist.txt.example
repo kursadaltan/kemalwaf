@@ -1,0 +1,16 @@
+# IP Blacklist
+# Copy this file to ip_blacklist.txt and add IP addresses
+# Each line can contain one IP address or CIDR notation
+# Comment lines start with #
+
+# Example: Single IP address
+# 10.0.0.100
+
+# Example: CIDR network (entire subnet)
+# 10.0.0.0/24
+
+# Example: Known malicious IPs (example)
+# 192.0.2.1
+# 198.51.100.0/24
+
+# To use in production, remove the examples above and add real IP addresses

@@ -1,0 +1,15 @@
+# IP Whitelist
+# Copy this file to ip_whitelist.txt and add IP addresses
+# Each line can contain one IP address or CIDR notation
+# Comment lines start with #
+
+# Example: Single IP address
+# 192.168.1.100
+
+# Example: CIDR network (entire subnet)
+# 192.168.1.0/24
+
+# Example: IPv6
+# 2001:db8::/32
+
+# To use in production, remove the examples above and add real IP addresses

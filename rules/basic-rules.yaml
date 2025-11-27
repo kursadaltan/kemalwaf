@@ -1,0 +1,158 @@
+---
+rules:
+  - id: 941100
+    name: "XSS Attack Detected - Basic Patterns"
+    msg: "XSS Attack Detected - Basic Patterns"
+    category: "xss"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(<script|javascript:|onerror=|onload=|<iframe|<object|<embed|eval\\(|alert\\(|document\\.cookie|document\\.write)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xss"
+
+  - id: 941200
+    name: "XSS Attack Detected - Event Handlers"
+    msg: "XSS Attack Detected - Event Handlers"
+    category: "xss"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(on(click|error|load|mouseover|focus|blur|change|submit|reset|select|abort|keydown|keypress|keyup|mousedown|mousemove|mouseout|mouseup|wheel|pointermove|toggle)\\s*=)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xss"
+
+  - id: 941300
+    name: "XSS Attack Detected - SVG and HTML5"
+    msg: "XSS Attack Detected - SVG and HTML5"
+    category: "xss"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(<svg|<video|<audio|<details|<source|<img|<body|<html|<style|<link|<meta|<form|<input|<textarea|<select|<button)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xss"
+
+  - id: 941400
+    name: "XSS Attack Detected - JavaScript Functions"
+    msg: "XSS Attack Detected - JavaScript Functions"
+    category: "xss"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(confirm\\(|prompt\\(|confirm\\.call|prompt\\.call|setInterval|setTimeout|Function\\(|String\\.fromCharCode|unescape|decodeURI|decodeURIComponent|atob|btoa)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xss"
+
+  - id: 941500
+    name: "XSS Attack Detected - Encoded Patterns"
+    msg: "XSS Attack Detected - Encoded Patterns"
+    category: "xss"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(%3cscript|%3Cscript|%3c%73%63%72%69%70%74|&#x3c;script|&#60;script|&lt;script|\\x3cscript|\\u003cscript|javas%26%2399;ript|javas%23x63;ript)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: HEADERS
+    transforms:
+      - none
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xss"
+
+  - id: 941600
+    name: "XSS Attack Detected - Data URI and JavaScript Protocol"
+    msg: "XSS Attack Detected - Data URI and JavaScript Protocol"
+    category: "xss"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(data:text/html|data:image/svg|javascript:|vbscript:|data:javascript|jscript:|livescript:|mocha:)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: HEADERS
+    transforms:
+      - url_decode
+      - url_decode_uni
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-xss"
+
+  - id: 942200
+    name: "SQL Injection Attack Detected - Boolean-based"
+    msg: "SQL Injection Attack Detected - Boolean-based"
+    category: "sqli"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(and\\s+['\"]\\d+['\"]\\s*=\\s*['\"]\\d+|or\\s+['\"]\\d+['\"]\\s*=\\s*['\"]\\d+)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-sqli"
+
+  - id: 942101
+    name: "SQL Injection Attack Detected - Basic Pattern"
+    msg: "SQL Injection Attack Detected via libinjection"
+    category: "sqli"
+    severity: "CRITICAL"
+    paranoia_level: 1
+    operator: "regex"
+    pattern: "(?i)(union.*select|select.*from|insert.*into|delete.*from|drop.*table|update.*set|exec.*\\(|execute.*\\(|'.*or.*'.*=.*'|\".*or.*\".*=.*\"|;.*drop|;.*delete|;.*insert|--.*$|/\\*.*\\*/)"
+    variables:
+      - type: ARGS
+      - type: BODY
+      - type: REQUEST_LINE
+    transforms:
+      - url_decode
+      - lowercase
+    action: "deny"
+    tags:
+      - "attack-sqli"
