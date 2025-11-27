@@ -5,7 +5,7 @@ services:
     build: .
     platform: linux/amd64
     ports:
-      - "3060:3000"
+      - "3030:3030"
     env_file:
       - .env
     volumes:

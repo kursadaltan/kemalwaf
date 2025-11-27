@@ -79,7 +79,7 @@ cd kemal-waf
 # Start with Docker Compose
 docker-compose up --build
 
-# WAF is now running at http://localhost:3000
+# WAF is now running at http://localhost:3030
 ```
 
 ### Direct Build on macOS (Without Docker)
