@@ -32,16 +32,16 @@ module KemalWAF
       # Değişken snapshot'ı oluştur
       variables = build_variable_snapshot(request, body)
 
-      # Her kuralı değerlendir
+      # Evaluate each rule
       @rule_loader.rules.each do |rule|
         match_result = match_rule?(rule, variables)
         if match_result
           matched_var, matched_val = match_result
-          Log.info { "Kural eşleşmesi: ID=#{rule.id}, Msg=#{rule.msg}" }
+          Log.info { "Rule match: ID=#{rule.id}, Msg=#{rule.msg}" }
 
           if rule.action == "deny"
             if @observe_mode
-              Log.warn { "[OBSERVE MODE] Kural #{rule.id} eşleşti ama engellenmedi" }
+              Log.warn { "[OBSERVE MODE] Rule #{rule.id} matched but not blocked" }
               return EvaluationResult.new(
                 blocked: false,
                 rule_id: rule.id,
@@ -51,7 +51,7 @@ module KemalWAF
                 matched_value: matched_val
               )
             else
-              Log.warn { "İstek engellendi: Kural #{rule.id}" }
+              Log.warn { "Request blocked: Rule #{rule.id}" }
               return EvaluationResult.new(
                 blocked: true,
                 rule_id: rule.id,
@@ -107,7 +107,7 @@ module KemalWAF
       cookie_names = [] of String
       if cookie_header = request.headers["Cookie"]?
         cookies << cookie_header
-        # Cookie isimlerini parse et
+        # Parse cookie names
         cookie_header.split(';').each do |cookie|
           if eq_pos = cookie.index('=')
             cookie_names << cookie[0...eq_pos].strip
@@ -122,7 +122,7 @@ module KemalWAF
       if body && !body.empty?
         limited_body = body[0...@body_limit]
         if limited_body.size < body.size
-          Log.warn { "Body boyutu limiti aşıldı, ilk #{@body_limit} byte okundu" }
+          Log.warn { "Body size limit exceeded, first #{@body_limit} bytes read" }
         end
         body_values << limited_body
       end
@@ -197,18 +197,18 @@ module KemalWAF
     end
 
     private def match_regex(rule : Rule, value : String) : Bool
-      return false unless rule.compiled_regex
-      rule.compiled_regex.not_nil!.matches?(value)
+      return false unless compiled_regex = rule.compiled_regex
+      compiled_regex.matches?(value)
     end
 
     private def match_contains(rule : Rule, value : String) : Bool
-      return false unless rule.pattern
-      value.includes?(rule.pattern.not_nil!)
+      return false unless pattern = rule.pattern
+      value.includes?(pattern)
     end
 
     private def match_starts_with(rule : Rule, value : String) : Bool
-      return false unless rule.pattern
-      value.starts_with?(rule.pattern.not_nil!)
+      return false unless pattern = rule.pattern
+      value.starts_with?(pattern)
     end
 
     private def apply_transforms(value : String, transforms : Array(String)?) : String
@@ -233,7 +233,7 @@ module KemalWAF
         when "replace_comments"
           result = replace_comments(result)
         else
-          Log.warn { "Bilinmeyen dönüşüm: #{transform}" }
+          Log.warn { "Unknown transform: #{transform}" }
         end
       end
       result
@@ -246,16 +246,21 @@ module KemalWAF
     end
 
     private def url_decode_uni(value : String) : String
-      # Unicode-aware URL decode (basit implementasyon)
-      # Gerçek implementasyon daha karmaşık olabilir
+      # Unicode-aware URL decode (simple implementation)
+      # NOTE: This is a simplified implementation. A full implementation would handle
+      # Unicode percent-encoding (e.g., %uXXXX format) which is not standard but sometimes used.
+      # Current implementation only handles standard URL encoding.
+      # Real implementation may be more complex and should handle various Unicode encodings.
       URI.decode_www_form(value)
     rescue
       value
     end
 
     private def utf8_to_unicode(value : String) : String
-      # UTF-8 to Unicode conversion (basit implementasyon)
-      # Crystal zaten UTF-8 kullanıyor, bu transform genelde gerekli değil
+      # UTF-8 to Unicode conversion (simple implementation)
+      # NOTE: Crystal already uses UTF-8 internally, so this transform is usually a no-op.
+      # This transform exists for compatibility with ModSecurity rule sets that may expect
+      # explicit UTF-8 to Unicode conversion, but in practice it's rarely needed.
       value
     end
 
@@ -264,7 +269,7 @@ module KemalWAF
     end
 
     private def replace_comments(value : String) : String
-      # SQL ve script comment'lerini kaldır
+      # Remove SQL and script comments
       result = value
       # SQL comments: -- ve /* */
       result = result.gsub(/--.*$/, "")

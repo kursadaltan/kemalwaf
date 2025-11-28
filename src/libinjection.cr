@@ -31,7 +31,7 @@ module KemalWAF
 
     # Check if LibInjection is available
     def self.available? : Bool
-      return @@available.not_nil! if @@available
+      return @@available if @@available
 
       @@initialized = true
 
@@ -43,11 +43,11 @@ module KemalWAF
 
         # If we get here without exception, LibInjection is available
         @@available = true
-        Log.info { "LibInjection başarıyla yüklendi" }
+        Log.info { "LibInjection successfully loaded" }
         true
       rescue ex
         @@available = false
-        Log.warn { "LibInjection yüklenemedi: #{ex.message}. libinjection_sqli ve libinjection_xss operator'ları çalışmayacak." }
+        Log.warn { "LibInjection failed to load: #{ex.message}. libinjection_sqli and libinjection_xss operators will not work." }
         false
       end
     end
@@ -63,7 +63,7 @@ module KemalWAF
 
         result == LibInjection::InjectionResult::TRUE
       rescue ex
-        Log.error { "LibInjection SQLi detection hatası: #{ex.message}" }
+        Log.error { "LibInjection SQLi detection error: #{ex.message}" }
         false
       end
     end
@@ -78,7 +78,7 @@ module KemalWAF
 
         result == LibInjection::InjectionResult::TRUE
       rescue ex
-        Log.error { "LibInjection XSS detection hatası: #{ex.message}" }
+        Log.error { "LibInjection XSS detection error: #{ex.message}" }
         false
       end
     end

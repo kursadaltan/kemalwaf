@@ -39,7 +39,7 @@ module KemalWAF
       # Background writer fiber'ı başlat
       spawn writer_loop
 
-      Log.info { "StructuredLogger başlatıldı: #{@log_dir}/#{@base_name}" }
+      Log.info { "StructuredLogger started: #{@log_dir}/#{@base_name}" }
     end
 
     # Request loglama (non-blocking)
@@ -136,13 +136,13 @@ module KemalWAF
     private def enqueue(message : LogMessage)
       return unless @running.get == 1
 
-      # Non-blocking send - queue doluysa drop et
+      # Non-blocking send - drop if queue full
       select
       when @queue.send(message)
-        # Başarıyla eklendi
+        # Successfully added
       else
-        # Queue dolu, log kaybı (opsiyonel: burada log edebiliriz)
-        Log.warn { "Log queue dolu, mesaj kaybedildi" }
+        # Queue full, log loss (optional: we can log here)
+        Log.warn { "Log queue full, message lost" }
       end
     end
 
@@ -197,7 +197,7 @@ module KemalWAF
             end
           end
         rescue ex
-          Log.error { "Log yazma hatası: #{ex.message}" }
+          Log.error { "Log write error: #{ex.message}" }
         end
       end
     end
@@ -233,7 +233,7 @@ module KemalWAF
       end
 
       flush_batch(remaining) unless remaining.empty?
-      Log.info { "StructuredLogger kapatıldı" }
+      Log.info { "StructuredLogger shut down" }
     end
   end
 end

@@ -1,6 +1,5 @@
 require "kemal"
 require "json"
-require "ecr"
 require "uuid"
 require "./rule_loader"
 require "./evaluator"
@@ -14,50 +13,25 @@ require "./ip_filter"
 require "./geoip"
 require "./config_loader"
 require "./connection_pool_manager"
+require "./waf_renderer"
+require "./waf_helpers"
 
-def render_waf_403(rule_id : String?, message : String?, observe : Bool) : String
-  logo = "https://avatars3.githubusercontent.com/u/15321198?v=3&s=200"
-  rid = rule_id || "N/A"
-  msg = message || "Suspicious request detected and blocked."
-  mode = observe ? "observe" : "enforce"
-  ray = Random::Secure.hex(16)
-  timestamp = Time.utc.to_s("%Y-%m-%d %H:%M:%SZ")
-
-  ECR.render("#{__DIR__}/views/403.ecr")
-end
-
-def render_waf_502(domain : String, upstream : String, message : String) : String
-  logo = "https://avatars3.githubusercontent.com/u/15321198?v=3&s=200"
-  msg = message
-  ray = Random::Secure.hex(16)
-  timestamp = Time.utc.to_s("%Y-%m-%d %H:%M:%SZ")
-
-  ECR.render("#{__DIR__}/views/502.ecr")
-end
-
-def render_waf_429(limit : Int32, reset_at : Time, message : String) : String
-  logo = "https://avatars3.githubusercontent.com/u/15321198?v=3&s=200"
-  msg = message
-  ray = Random::Secure.hex(16)
-  timestamp = Time.utc.to_s("%Y-%m-%d %H:%M:%SZ")
-  reset_at_str = reset_at.to_s("%Y-%m-%d %H:%M:%S UTC")
-
-  ECR.render("#{__DIR__}/views/429.ecr")
-end
+# Constants
+DEFAULT_RETRY_COUNT = 3
 
 module KemalWAF
   Log = ::Log.for("waf")
 
-  # Konfigürasyon
+  # Configuration
   RULE_DIR               = ENV.fetch("RULE_DIR", "rules")
   UPSTREAM               = ENV.fetch("UPSTREAM", "http://localhost:8080")
-  UPSTREAM_HOST_HEADER   = ENV.fetch("UPSTREAM_HOST_HEADER", "")                  # Boş ise upstream URI'den alınır, set edilirse bu kullanılır
-  PRESERVE_ORIGINAL_HOST = ENV.fetch("PRESERVE_ORIGINAL_HOST", "false") == "true" # Orijinal request'teki Host header'ını koru
+  UPSTREAM_HOST_HEADER   = ENV.fetch("UPSTREAM_HOST_HEADER", "")                  # If empty, taken from upstream URI; if set, this is used
+  PRESERVE_ORIGINAL_HOST = ENV.fetch("PRESERVE_ORIGINAL_HOST", "false") == "true" # Preserve original Host header from request
   OBSERVE_MODE           = ENV.fetch("OBSERVE", "false") == "true"
   BODY_LIMIT             = ENV.fetch("BODY_LIMIT_BYTES", "1048576").to_i
   RELOAD_INTERVAL        = ENV.fetch("RELOAD_INTERVAL_SEC", "5").to_i
 
-  # Logging konfigürasyonu
+  # Logging configuration
   LOG_DIR                  = ENV.fetch("LOG_DIR", "logs")
   LOG_MAX_SIZE_MB          = ENV.fetch("LOG_MAX_SIZE_MB", "100").to_i
   LOG_RETENTION_DAYS       = ENV.fetch("LOG_RETENTION_DAYS", "30").to_i
@@ -68,18 +42,18 @@ module KemalWAF
   LOG_BATCH_SIZE           = ENV.fetch("LOG_BATCH_SIZE", "100").to_i
   LOG_FLUSH_INTERVAL_MS    = ENV.fetch("LOG_FLUSH_INTERVAL_MS", "1000").to_i
 
-  # Rate limiting konfigürasyonu
+  # Rate limiting configuration
   RATE_LIMIT_ENABLED            = ENV.fetch("RATE_LIMIT_ENABLED", "true") == "true"
   RATE_LIMIT_DEFAULT            = ENV.fetch("RATE_LIMIT_DEFAULT", "100000").to_i
   RATE_LIMIT_WINDOW_SEC         = ENV.fetch("RATE_LIMIT_WINDOW_SEC", "60").to_i
   RATE_LIMIT_BLOCK_DURATION_SEC = ENV.fetch("RATE_LIMIT_BLOCK_DURATION_SEC", "300").to_i
 
-  # IP filtering konfigürasyonu
+  # IP filtering configuration
   IP_FILTER_ENABLED = ENV.fetch("IP_FILTER_ENABLED", "true") == "true"
   IP_WHITELIST_FILE = ENV.fetch("IP_WHITELIST_FILE", "")
   IP_BLACKLIST_FILE = ENV.fetch("IP_BLACKLIST_FILE", "")
 
-  # GeoIP filtering konfigürasyonu
+  # GeoIP filtering configuration
   GEOIP_ENABLED           = ENV.fetch("GEOIP_ENABLED", "false") == "true"
   GEOIP_BLOCKED_COUNTRIES = ENV.fetch("GEOIP_BLOCKED_COUNTRIES", "").split(',').map(&.strip).reject(&.empty?)
   GEOIP_ALLOWED_COUNTRIES = ENV.fetch("GEOIP_ALLOWED_COUNTRIES", "").split(',').map(&.strip).reject(&.empty?)
@@ -125,16 +99,18 @@ module KemalWAF
   end
 
   # Effective configuration values (with env override)
+  # These are computed once at startup. For runtime changes, use config file hot-reload.
+  # Configuration priority: ENV > YAML config > defaults
   EFFECTIVE_UPSTREAM     = get_config_value("UPSTREAM", UPSTREAM)
   EFFECTIVE_RULE_DIR     = get_config_value("RULE_DIR", RULE_DIR)
   EFFECTIVE_LOG_DIR      = get_config_value("LOG_DIR", LOG_DIR)
   EFFECTIVE_OBSERVE_MODE = get_config_value("OBSERVE", OBSERVE_MODE ? "true" : "false") == "true"
 
-  # Global bileşenler
+  # Global components
   @@rule_loader = RuleLoader.new(EFFECTIVE_RULE_DIR)
   @@evaluator = Evaluator.new(@@rule_loader, EFFECTIVE_OBSERVE_MODE, BODY_LIMIT)
 
-  # Connection pool manager initialize et
+  # Initialize connection pool manager
   @@pool_manager = begin
     if config_loader = @@config_loader
       config = config_loader.get_config
@@ -150,7 +126,7 @@ module KemalWAF
   end
 
   @@proxy_client = begin
-    retry_count = 3 # Default
+    retry_count = DEFAULT_RETRY_COUNT
     if config_loader = @@config_loader
       config = config_loader.get_config
       if upstream_config = config.try(&.upstream)
@@ -167,7 +143,7 @@ module KemalWAF
   ) : nil
   @@ip_filter = IP_FILTER_ENABLED ? IPFilter.new(true) : IPFilter.new(false)
 
-  # IP listelerini yükle
+  # Load IP lists
   if IP_FILTER_ENABLED
     if !IP_WHITELIST_FILE.empty? && File.exists?(IP_WHITELIST_FILE)
       @@ip_filter.load_from_file(IP_WHITELIST_FILE, :whitelist)
@@ -202,10 +178,19 @@ module KemalWAF
     LOG_FLUSH_INTERVAL_MS
   ) : nil
 
-  # İlk kural sayısını metriğe kaydet
+  # Record initial rule count to metrics
   @@metrics.set_rules_loaded(@@rule_loader.rule_count)
 
-  # Config reload metodu - graceful reload
+  # Helper: Check if config section changed
+  private def self.config_section_changed?(old_section, new_section, &block : -> Bool) : Bool
+    if old_section && new_section
+      block.call
+    else
+      old_section.nil? != new_section.nil?
+    end
+  end
+
+  # Config reload method - graceful reload
   def self.reload_config
     return unless config_loader = @@config_loader
 
@@ -219,23 +204,23 @@ module KemalWAF
       Log.info { "Starting config graceful reload..." }
 
       # Did rate limiting settings change?
-      old_rl = old_config.rate_limiting
-      new_rl = new_config.rate_limiting
-      rl_changed = (old_rl.nil? != new_rl.nil?) || (old_rl && new_rl && (
-        old_rl.not_nil!.enabled != new_rl.not_nil!.enabled ||
-        old_rl.not_nil!.default_limit != new_rl.not_nil!.default_limit ||
-        old_rl.not_nil!.window != new_rl.not_nil!.window ||
-        old_rl.not_nil!.block_duration != new_rl.not_nil!.block_duration
-      ))
-      if rl_changed
-        if new_rl && new_rl.enabled
+      old_rate_limit = old_config.rate_limiting
+      new_rate_limit = new_config.rate_limiting
+      rate_limit_changed = config_section_changed?(old_rate_limit, new_rate_limit) do
+        old_rate_limit.enabled != new_rate_limit.enabled ||
+          old_rate_limit.default_limit != new_rate_limit.default_limit ||
+          old_rate_limit.window != new_rate_limit.window ||
+          old_rate_limit.block_duration != new_rate_limit.block_duration
+      end
+      if rate_limit_changed
+        if new_rate_limit && new_rate_limit.enabled
           # Recreate rate limiter (existing states will be lost but this is acceptable)
           @@rate_limiter = RateLimiter.new(
-            new_rl.default_limit,
-            parse_duration_sec(new_rl.window),
-            parse_duration_sec(new_rl.block_duration)
+            new_rate_limit.default_limit,
+            parse_duration_sec(new_rate_limit.window),
+            parse_duration_sec(new_rate_limit.block_duration)
           )
-          Log.info { "Rate limiter reconfigured: #{new_rl.default_limit}/#{new_rl.window}" }
+          Log.info { "Rate limiter reconfigured: #{new_rate_limit.default_limit}/#{new_rate_limit.window}" }
         else
           @@rate_limiter = nil
           Log.info { "Rate limiting disabled" }
@@ -243,24 +228,24 @@ module KemalWAF
       end
 
       # Did IP filtering settings change?
-      old_ip = old_config.ip_filtering
-      new_ip = new_config.ip_filtering
-      ip_changed = (old_ip.nil? != new_ip.nil?) || (old_ip && new_ip && (
-        old_ip.not_nil!.enabled != new_ip.not_nil!.enabled ||
-        old_ip.not_nil!.whitelist_file != new_ip.not_nil!.whitelist_file ||
-        old_ip.not_nil!.blacklist_file != new_ip.not_nil!.blacklist_file
-      ))
-      if ip_changed
-        if new_ip && new_ip.enabled
+      old_ip_filter = old_config.ip_filtering
+      new_ip_filter = new_config.ip_filtering
+      ip_filter_changed = config_section_changed?(old_ip_filter, new_ip_filter) do
+        old_ip_filter.enabled != new_ip_filter.enabled ||
+          old_ip_filter.whitelist_file != new_ip_filter.whitelist_file ||
+          old_ip_filter.blacklist_file != new_ip_filter.blacklist_file
+      end
+      if ip_filter_changed
+        if new_ip_filter && new_ip_filter.enabled
           # Recreate IP filter and load files
           @@ip_filter = IPFilter.new(true)
-          if whitelist_file = new_ip.whitelist_file
+          if whitelist_file = new_ip_filter.whitelist_file
             if File.exists?(whitelist_file)
               @@ip_filter.load_from_file(whitelist_file, :whitelist)
               Log.info { "IP whitelist reloaded: #{whitelist_file}" }
             end
           end
-          if blacklist_file = new_ip.blacklist_file
+          if blacklist_file = new_ip_filter.blacklist_file
             if File.exists?(blacklist_file)
               @@ip_filter.load_from_file(blacklist_file, :blacklist)
               Log.info { "IP blacklist reloaded: #{blacklist_file}" }
@@ -273,20 +258,20 @@ module KemalWAF
       end
 
       # Did GeoIP settings change?
-      old_geoip = old_config.geoip
-      new_geoip = new_config.geoip
-      geoip_changed = (old_geoip.nil? != new_geoip.nil?) || (old_geoip && new_geoip && (
-        old_geoip.not_nil!.enabled != new_geoip.not_nil!.enabled ||
-        old_geoip.not_nil!.mmdb_file != new_geoip.not_nil!.mmdb_file ||
-        old_geoip.not_nil!.blocked_countries != new_geoip.not_nil!.blocked_countries ||
-        old_geoip.not_nil!.allowed_countries != new_geoip.not_nil!.allowed_countries
-      ))
-      if geoip_changed
-        if new_geoip && new_geoip.enabled
+      old_geoip_config = old_config.geoip
+      new_geoip_config = new_config.geoip
+      geoip_config_changed = config_section_changed?(old_geoip_config, new_geoip_config) do
+        old_geoip_config.enabled != new_geoip_config.enabled ||
+          old_geoip_config.mmdb_file != new_geoip_config.mmdb_file ||
+          old_geoip_config.blocked_countries != new_geoip_config.blocked_countries ||
+          old_geoip_config.allowed_countries != new_geoip_config.allowed_countries
+      end
+      if geoip_config_changed
+        if new_geoip_config && new_geoip_config.enabled
           @@geoip_filter = GeoIPFilter.new(
             true,
-            new_geoip.blocked_countries,
-            new_geoip.allowed_countries
+            new_geoip_config.blocked_countries,
+            new_geoip_config.allowed_countries
           )
           Log.info { "GeoIP filter reconfigured" }
         else
@@ -405,16 +390,16 @@ module KemalWAF
   end
   Log.info { "IP_FILTER_ENABLED: #{IP_FILTER_ENABLED}" }
   if IP_FILTER_ENABLED
-    Log.info { "IP_WHITELIST_FILE: #{IP_WHITELIST_FILE.empty? ? "(yok)" : IP_WHITELIST_FILE}" }
-    Log.info { "IP_BLACKLIST_FILE: #{IP_BLACKLIST_FILE.empty? ? "(yok)" : IP_BLACKLIST_FILE}" }
+    Log.info { "IP_WHITELIST_FILE: #{IP_WHITELIST_FILE.empty? ? "(none)" : IP_WHITELIST_FILE}" }
+    Log.info { "IP_BLACKLIST_FILE: #{IP_BLACKLIST_FILE.empty? ? "(none)" : IP_BLACKLIST_FILE}" }
     stats = @@ip_filter.stats
     Log.info { "IP Filter Stats: Whitelist IPs=#{stats["whitelist_ips"]}, Blacklist IPs=#{stats["blacklist_ips"]}, Whitelist CIDRs=#{stats["whitelist_cidrs"]}, Blacklist CIDRs=#{stats["blacklist_cidrs"]}" }
   end
   Log.info { "GEOIP_ENABLED: #{GEOIP_ENABLED}" }
   if GEOIP_ENABLED
-    Log.info { "GEOIP_MMDB_FILE: #{GEOIP_MMDB_FILE.empty? ? "(yok, API kullanılacak)" : GEOIP_MMDB_FILE}" }
-    Log.info { "GEOIP_BLOCKED_COUNTRIES: #{GEOIP_BLOCKED_COUNTRIES.empty? ? "(yok)" : GEOIP_BLOCKED_COUNTRIES.join(", ")}" }
-    Log.info { "GEOIP_ALLOWED_COUNTRIES: #{GEOIP_ALLOWED_COUNTRIES.empty? ? "(yok)" : GEOIP_ALLOWED_COUNTRIES.join(", ")}" }
+    Log.info { "GEOIP_MMDB_FILE: #{GEOIP_MMDB_FILE.empty? ? "(none, API will be used)" : GEOIP_MMDB_FILE}" }
+    Log.info { "GEOIP_BLOCKED_COUNTRIES: #{GEOIP_BLOCKED_COUNTRIES.empty? ? "(none)" : GEOIP_BLOCKED_COUNTRIES.join(", ")}" }
+    Log.info { "GEOIP_ALLOWED_COUNTRIES: #{GEOIP_ALLOWED_COUNTRIES.empty? ? "(none)" : GEOIP_ALLOWED_COUNTRIES.join(", ")}" }
     geoip_stats = @@geoip_filter.stats
     Log.info { "GeoIP Stats: Blocked Countries=#{geoip_stats["blocked_countries"]}, Allowed Countries=#{geoip_stats["allowed_countries"]}, Cache Size=#{geoip_stats["cache_size"]}" }
   end
@@ -465,11 +450,11 @@ module KemalWAF
   end
 
   def self.shutdown
-    Log.info { "WAF kapatılıyor..." }
+    Log.info { "Shutting down WAF..." }
     @@pool_manager.try(&.shutdown_all)
     @@structured_logger.shutdown
     @@audit_logger.try(&.shutdown)
-    Log.info { "WAF kapatıldı" }
+    Log.info { "WAF shut down" }
   end
 end
 
@@ -505,7 +490,7 @@ before_all do |env|
   KemalWAF.metrics.increment_requests
 
   # Extract client IP
-  client_ip = extract_client_ip(env.request)
+  client_ip = WAFHelpers.extract_client_ip(env.request)
 
   # IP filtering check (before rate limiting)
   if ip_filter = KemalWAF.ip_filter
@@ -541,7 +526,7 @@ before_all do |env|
         source:  ip_filter_result.source,
       }.to_json)
       env.set("waf_blocked", true)
-      # halt env çağrıldığında Kemal response'u otomatik gönderir, close'a gerek yok
+      # When halt env is called, Kemal automatically sends the response, no need to close
       halt env, 403
     end
   end
@@ -582,7 +567,7 @@ before_all do |env|
         source:  "geoip",
       }.to_json)
       env.set("waf_blocked", true)
-      # halt env çağrıldığında Kemal response'u otomatik gönderir, close'a gerek yok
+      # When halt env is called, Kemal automatically sends the response, no need to close
       halt env, 403
     end
   end
@@ -612,13 +597,13 @@ before_all do |env|
         )
       end
 
-      # Rate limit header'larını ekle (response'a yazmadan önce)
+      # Add rate limit headers (before writing to response)
       rate_limiter.set_headers(env.response, rate_limit_result)
 
       env.response.content_type = "text/html; charset=utf-8"
 
       message = "Rate limit exceeded. You are allowed #{rate_limit_result.limit} requests per time window. Please try again after #{rate_limit_result.reset_at.to_rfc3339}."
-      html = render_waf_429(
+      html = WAFRenderer.render_429(
         rate_limit_result.limit,
         rate_limit_result.reset_at,
         message
@@ -634,8 +619,8 @@ before_all do |env|
 
   # Read request body
   body = nil
-  if env.request.body
-    body = env.request.body.not_nil!.gets_to_end
+  if request_body = env.request.body
+    body = request_body.gets_to_end
     # Recreate body to be able to read it again
     env.request.body = IO::Memory.new(body)
   end
@@ -661,12 +646,12 @@ before_all do |env|
     env.response.status_code = 403
     env.response.content_type = "text/html; charset=utf-8"
 
-    html = render_waf_403(result.rule_id.to_s, result.message, KemalWAF::OBSERVE_MODE)
+    html = WAFRenderer.render_403(result.rule_id.to_s, result.message, KemalWAF::OBSERVE_MODE)
     env.response.print(html)
     # Mark as blocked by WAF
     env.set("waf_blocked", true)
     Log.debug { "Request short-circuited by WAF middleware" }
-    # halt env çağrıldığında Kemal response'u otomatik gönderir, close'a gerek yok
+    # When halt env is called, Kemal automatically sends the response, no need to close
     halt env, 403
   elsif result.observed
     KemalWAF.metrics.increment_observed
@@ -677,29 +662,6 @@ before_all do |env|
   # Request timing already recorded (request_start_time_ns)
 end
 
-# Client IP extraction helper
-private def extract_client_ip(request : HTTP::Request) : String
-  # X-Forwarded-For header'ından IP al
-  if forwarded_for = request.headers["X-Forwarded-For"]?
-    # İlk IP'yi al (proxy chain'de ilk gerçek IP)
-    forwarded_for.split(',')[0].strip
-  elsif real_ip = request.headers["X-Real-IP"]?
-    real_ip.strip
-  else
-    # Remote address (Kemal context'ten alınabilir)
-    "unknown"
-  end
-end
-
-# Domain extraction helper
-private def extract_domain(request : HTTP::Request) : String?
-  host = request.headers["Host"]?
-  return nil unless host
-
-  # Port'u kaldır (örn: "example.com:8080" -> "example.com")
-  host.split(':')[0].strip.downcase
-end
-
 # Proxy handler - forward all requests to upstream
 # Same handler for all HTTP methods
 def proxy_request(env)
@@ -707,18 +669,18 @@ def proxy_request(env)
     return ""
   end
 
-  request_id = env.get?("request_id").try(&.as(String)) || UUID.random.to_s
+  request_id = env.get?("request_id").try(&.as?(String)) || UUID.random.to_s
   # We stored start_time as nanoseconds
-  start_time_ns = env.get?("request_start_time_ns").try(&.as(Float64)) || Time.monotonic.total_nanoseconds.to_f
+  start_time_ns = env.get?("request_start_time_ns").try(&.as?(Float64)) || Time.monotonic.total_nanoseconds.to_f
 
   # Read body
   body = nil
-  if env.request.body
-    body = env.request.body.not_nil!.gets_to_end
+  if request_body = env.request.body
+    body = request_body.gets_to_end
   end
 
   # Domain extraction and routing
-  domain = extract_domain(env.request)
+  domain = WAFHelpers.extract_domain(env.request)
   host_header = env.request.headers["Host"]?
   KemalWAF::Log.info { "Request Host header: #{host_header}, Extracted domain: #{domain}" }
 
@@ -738,19 +700,19 @@ def proxy_request(env)
         custom_host_header = domain_config.upstream_host_header.empty? ? nil : domain_config.upstream_host_header
         preserve_original_host = domain_config.preserve_original_host
         verify_ssl = domain_config.verify_ssl
-        KemalWAF::Log.info { "Domain '#{domain}' için upstream bulundu: #{upstream_url}, verify_ssl: #{verify_ssl}" }
+        KemalWAF::Log.info { "Upstream found for domain '#{domain}': #{upstream_url}, verify_ssl: #{verify_ssl}" }
       else
         # Domain not in configuration - return 502 error
         KemalWAF::Log.warn { "Domain not found in configuration: '#{domain}' (Host: #{host_header})" }
         # Log available domains (for debug)
         if config = config_loader.get_config
           available_domains = config.domains.keys.join(", ")
-          KemalWAF::Log.debug { "Mevcut domain'ler: #{available_domains}" }
+          KemalWAF::Log.debug { "Available domains: #{available_domains}" }
         end
         env.response.status_code = 502
         env.response.content_type = "text/html; charset=utf-8"
 
-        html = render_waf_502(
+        html = WAFRenderer.render_502(
           domain || "unknown",
           "N/A",
           "Domain '#{domain}' is not configured in WAF. Please contact the administrator."
@@ -761,14 +723,14 @@ def proxy_request(env)
         return ""
       end
     else
-      # Host header yok - default upstream kullan
+      # No Host header - use default upstream
       upstream_url = config_loader.get_default_upstream
       if upstream_url.nil?
-        KemalWAF::Log.error { "Host header yok ve default upstream tanımlı değil" }
+        KemalWAF::Log.error { "No Host header and no default upstream configured" }
         env.response.status_code = 502
         env.response.content_type = "text/html; charset=utf-8"
 
-        html = render_waf_502(
+        html = WAFRenderer.render_502(
           "unknown",
           "N/A",
           "No Host header provided and no default upstream configured."
@@ -787,13 +749,13 @@ def proxy_request(env)
     upstream_url = KemalWAF::EFFECTIVE_UPSTREAM
   end
 
-  # Upstream URL hala yoksa hata döndür
+  # Return error if upstream URL still not determined
   if upstream_url.nil? || upstream_url.empty?
-    KemalWAF::Log.error { "Upstream URL belirlenemedi" }
+    KemalWAF::Log.error { "Upstream URL could not be determined" }
     env.response.status_code = 502
     env.response.content_type = "text/html; charset=utf-8"
 
-    html = render_waf_502(
+    html = WAFRenderer.render_502(
       domain || "unknown",
       "N/A",
       "No upstream server configured for this request."
@@ -815,11 +777,11 @@ def proxy_request(env)
       verify_ssl: verify_ssl
     )
   rescue ex
-    KemalWAF::Log.error { "Upstream forward hatası: #{ex.message}" }
+    KemalWAF::Log.error { "Upstream forward error: #{ex.message}" }
     env.response.status_code = 502
     env.response.content_type = "text/html; charset=utf-8"
 
-    html = render_waf_502(
+    html = WAFRenderer.render_502(
       domain || "unknown",
       upstream_url,
       "Failed to connect to upstream server: #{ex.message}"
@@ -835,22 +797,22 @@ def proxy_request(env)
     return ""
   end
 
-  # Upstream yanıtını client'a aktar
+  # Forward upstream response to client
   env.response.status_code = upstream_response.status_code.to_i
 
-  # Yanıt başlıklarını kopyala
+  # Copy response headers
   upstream_response.headers.each do |key, values|
     key_lower = key.downcase
 
-    # Bazı başlıkları atla (bunlar Kemal tarafından yönetiliyor)
+    # Skip some headers (these are managed by Kemal)
     next if key_lower == "transfer-encoding"
     next if key_lower == "connection"
-    next if key_lower == "content-length" # Kemal otomatik hesaplıyor
+    next if key_lower == "content-length" # Kemal calculates automatically
 
-    # Content-Type gibi önemli header'ları özellikle koru
+    # Preserve important headers like Content-Type
     values.each do |value|
       if key_lower == "content-type"
-        # Content-Type'ı set et (add yerine set kullan, tekrar eklenmesin)
+        # Set Content-Type (use set instead of add to avoid duplicates)
         env.response.content_type = value
       else
         env.response.headers.add(key, value)
@@ -858,7 +820,7 @@ def proxy_request(env)
     end
   end
 
-  # Request loglama (non-blocking) - başarılı istekler için
+  # Request logging (non-blocking) - for successful requests
   current_time_ns = Time.monotonic.total_nanoseconds.to_f
   total_duration_ns = current_time_ns - start_time_ns
   total_duration = Time::Span.new(nanoseconds: total_duration_ns.to_i64)

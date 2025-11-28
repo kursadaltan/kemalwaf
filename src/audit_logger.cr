@@ -36,7 +36,7 @@ module KemalWAF
       # Background writer fiber'ı başlat
       spawn writer_loop
 
-      Log.info { "AuditLogger başlatıldı: #{@log_dir}/#{@base_name}" }
+      Log.info { "AuditLogger started: #{@log_dir}/#{@base_name}" }
     end
 
     # Block edilen istek loglama (non-blocking)
@@ -78,13 +78,13 @@ module KemalWAF
     private def enqueue(message : AuditLogMessage)
       return unless @running.get == 1
 
-      # Non-blocking send - queue doluysa drop et
+      # Non-blocking send - drop if queue full
       select
       when @queue.send(message)
-        # Başarıyla eklendi
+        # Successfully added
       else
-        # Queue dolu, log kaybı
-        Log.warn { "Audit log queue dolu, mesaj kaybedildi" }
+        # Queue full, log loss
+        Log.warn { "Audit log queue full, message lost" }
       end
     end
 
@@ -139,7 +139,7 @@ module KemalWAF
             end
           end
         rescue ex
-          Log.error { "Audit log yazma hatası: #{ex.message}" }
+          Log.error { "Audit log write error: #{ex.message}" }
         end
       end
     end
@@ -174,7 +174,7 @@ module KemalWAF
       end
 
       flush_batch(remaining) unless remaining.empty?
-      Log.info { "AuditLogger kapatıldı" }
+      Log.info { "AuditLogger shut down" }
     end
   end
 end

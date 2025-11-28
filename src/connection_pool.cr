@@ -4,7 +4,16 @@ require "openssl"
 require "atomic"
 
 module KemalWAF
-  # Connection pool için connection metadata
+  # Constants
+  DEFAULT_POOL_ACQUIRE_TIMEOUT_MS  = 100
+  DEFAULT_READ_TIMEOUT_SEC         =  30
+  DEFAULT_CONNECT_TIMEOUT_SEC      =  10
+  DEFAULT_IDLE_TIMEOUT_MINUTES     =   5
+  DEFAULT_CLEANUP_INTERVAL_MINUTES =   1
+  DEFAULT_POOL_FILL_DELAY_MS       =  10
+  CRITICAL_POOL_CONNECTIONS        =  10
+
+  # Connection metadata for connection pool
   struct PooledConnection
     property client : HTTP::Client
     property created_at : Time
@@ -54,7 +63,7 @@ module KemalWAF
       tls_context : OpenSSL::SSL::Context::Client? = nil,
       pool_size : Int32 = 100,
       max_size : Int32 = 200,
-      idle_timeout : Time::Span = 5.minutes,
+      idle_timeout : Time::Span = DEFAULT_IDLE_TIMEOUT_MINUTES.minutes,
       health_check : Bool = true,
     )
       @upstream_uri = upstream_uri
@@ -73,17 +82,19 @@ module KemalWAF
       # Channel oluştur (buffered - non-blocking send)
       @pool = Channel(PooledConnection?).new(@pool_size)
 
-      # Initial pool'u doldur (optimized - ilk connection'lar hemen)
+      # Fill initial pool (optimized - first connections immediately)
+      # Strategy: Create first N connections immediately for zero-latency critical path,
+      # then fill the rest in background to avoid startup overload
       spawn fill_initial_pool
 
       # Cleanup fiber'ı başlat
       spawn cleanup_loop
 
-      Log.info { "ConnectionPool oluşturuldu: #{upstream_uri} (size: #{pool_size}, max: #{max_size})" }
+      Log.info { "ConnectionPool created: #{upstream_uri} (size: #{pool_size}, max: #{max_size})" }
     end
 
-    # Pool'dan connection al (timeout ile)
-    def acquire(timeout : Time::Span = 100.milliseconds) : HTTP::Client?
+    # Get connection from pool (with timeout)
+    def acquire(timeout : Time::Span = DEFAULT_POOL_ACQUIRE_TIMEOUT_MS.milliseconds) : HTTP::Client?
       return nil unless @running.get == 1
 
       pooled_conn = nil
@@ -96,7 +107,7 @@ module KemalWAF
         @current_size.sub(1)
       when timeout(timeout)
         # Timeout - pool'dan connection alınamadı
-        Log.debug { "Connection acquire timeout, yeni connection oluşturulacak" }
+        Log.debug { "Connection acquire timeout, new connection will be created" }
         return create_new_connection
       end
 
@@ -104,25 +115,25 @@ module KemalWAF
 
       # Idle timeout kontrolü
       if pooled_conn.is_idle?(@idle_timeout)
-        Log.debug { "Connection idle timeout'a uğradı, kapatılıyor" }
+        Log.debug { "Connection hit idle timeout, closing" }
         begin
           pooled_conn.client.close
         rescue
           # Ignore close errors
         end
-        # current_size zaten azaltıldı (yukarıda), yeni connection oluştur
+        # current_size already decreased (above), create new connection
         return create_new_connection
       end
 
-      # Health check (basit - connection hala açık mı?)
+      # Health check (simple - is connection still open?)
       if @health_check && !is_connection_healthy?(pooled_conn.client)
-        Log.debug { "Connection unhealthy, kapatılıyor" }
+        Log.debug { "Connection unhealthy, closing" }
         begin
           pooled_conn.client.close
         rescue
           # Ignore close errors
         end
-        # current_size zaten azaltıldı (yukarıda), yeni connection oluştur
+        # current_size already decreased (above), create new connection
         return create_new_connection
       end
 
@@ -141,8 +152,8 @@ module KemalWAF
       # Max size kontrolü
       current = @current_size.get
       if current >= @max_size
-        # Pool dolu, connection'ı kapat
-        Log.debug { "Pool dolu (#{current}/#{@max_size}), connection kapatılıyor" }
+        # Pool full, close connection
+        Log.debug { "Pool full (#{current}/#{@max_size}), closing connection" }
         begin
           client.close
         rescue
@@ -151,28 +162,28 @@ module KemalWAF
         return
       end
 
-      # Connection'ı pool'a geri ver (buffered channel - non-blocking)
+      # Return connection to pool (buffered channel - non-blocking)
       pooled_conn = PooledConnection.new(client)
       @pool.send(pooled_conn) # Buffered channel, blocking olmaz
       @current_size.add(1)
     end
 
-    # Yeni connection oluştur (fallback için)
+    # Create new connection (for fallback)
     def create_new_connection : HTTP::Client?
       return nil unless @running.get == 1
 
       begin
         client = HTTP::Client.new(@upstream_uri, tls: @tls_context)
-        client.read_timeout = 30.seconds
-        client.connect_timeout = 10.seconds
+        client.read_timeout = DEFAULT_READ_TIMEOUT_SEC.seconds
+        client.connect_timeout = DEFAULT_CONNECT_TIMEOUT_SEC.seconds
         client
       rescue ex
-        Log.error { "Yeni connection oluşturulamadı: #{ex.message}" }
+        Log.error { "Failed to create new connection: #{ex.message}" }
         nil
       end
     end
 
-    # Tüm connection'ları kapat
+    # Close all connections
     def close_all
       @running.set(0)
 
@@ -196,7 +207,7 @@ module KemalWAF
           end
         end
 
-        Log.info { "ConnectionPool kapatıldı: #{closed_count} connection kapatıldı" }
+        Log.info { "ConnectionPool closed: #{closed_count} connections closed" }
       end
     end
 
@@ -213,8 +224,8 @@ module KemalWAF
     end
 
     private def fill_initial_pool
-      # İlk 10 connection'ı hemen oluştur (critical path için - sıfır latency)
-      critical_count = [10, @pool_size].min
+      # Create first connections immediately (for critical path - zero latency)
+      critical_count = [CRITICAL_POOL_CONNECTIONS, @pool_size].min
       critical_count.times do |i|
         break unless @running.get == 1
 
@@ -226,9 +237,9 @@ module KemalWAF
         end
       end
 
-      Log.info { "Critical pool connections oluşturuldu: #{@current_size.get} connection" }
+      Log.info { "Critical pool connections created: #{@current_size.get} connections" }
 
-      # Geri kalanını background'da yavaşça doldur (overload önlemek için)
+      # Fill the rest slowly in background (to prevent overload)
       if @pool_size > critical_count
         spawn do
           (critical_count...@pool_size).each do |i|
@@ -241,7 +252,7 @@ module KemalWAF
               when @pool.send(pooled_conn)
                 @current_size.add(1)
               else
-                # Channel dolu, connection'ı kapat
+                # Channel full, close connection
                 begin
                   conn.close
                 rescue
@@ -249,11 +260,11 @@ module KemalWAF
               end
             end
 
-            # Her connection arasında kısa bir bekleme (overload önlemek için)
-            sleep 10.milliseconds if i < @pool_size - 1
+            # Brief wait between each connection (to prevent overload)
+            sleep DEFAULT_POOL_FILL_DELAY_MS.milliseconds if i < @pool_size - 1
           end
 
-          Log.info { "Initial pool dolduruldu: #{@current_size.get} connection" }
+          Log.info { "Initial pool filled: #{@current_size.get} connections" }
         end
       end
     end
@@ -261,7 +272,7 @@ module KemalWAF
     private def cleanup_loop
       loop do
         break unless @running.get == 1
-        sleep 1.minute # Her dakika cleanup yap
+        sleep DEFAULT_CLEANUP_INTERVAL_MINUTES.minute # Cleanup every minute
 
         cleanup_idle_connections
       end
@@ -269,12 +280,12 @@ module KemalWAF
 
     private def cleanup_idle_connections
       @mutex.synchronize do
-        # Channel'daki tüm connection'ları kontrol et
-        # Not: Channel'dan alıp geri koymak gerekiyor (peek yok)
+        # Check all connections in channel
+        # Note: Need to take from channel and put back (no peek)
         connections_to_check = [] of PooledConnection?
         current_size = @current_size.get
 
-        # Tüm connection'ları al
+        # Get all connections
         current_size.times do
           select
           when conn = @pool.receive?
@@ -284,11 +295,11 @@ module KemalWAF
           end
         end
 
-        # Idle olanları kapat, diğerlerini geri koy
+        # Close idle ones, return others
         idle_count = 0
         connections_to_check.each do |conn|
           if conn && conn.is_idle?(@idle_timeout)
-            # Idle connection'ı kapat
+            # Close idle connection
             begin
               conn.client.close
             rescue
@@ -296,12 +307,12 @@ module KemalWAF
             idle_count += 1
             @current_size.sub(1)
           else
-            # Connection'ı geri koy
+            # Return connection
             select
             when @pool.send(conn)
-              # Başarıyla geri konuldu
+              # Successfully returned
             else
-              # Channel dolu, connection'ı kapat
+              # Channel full, close connection
               if conn
                 begin
                   conn.client.close
@@ -313,7 +324,7 @@ module KemalWAF
           end
         end
 
-        Log.debug { "Cleanup tamamlandı: #{idle_count} idle connection kapatıldı" } if idle_count > 0
+        Log.debug { "Cleanup completed: #{idle_count} idle connections closed" } if idle_count > 0
       end
     end
 

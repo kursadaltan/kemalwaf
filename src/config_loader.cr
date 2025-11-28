@@ -149,7 +149,7 @@ module KemalWAF
 
         # YAML'da "waf:" root key'i var, onu extract et
         waf_node = yaml_data["waf"]?
-        raise "YAML dosyasında 'waf:' root key'i bulunamadı" unless waf_node
+        raise "Root key 'waf:' not found in YAML file" unless waf_node
 
         # WAFConfig struct'ına dönüştür
         config = WAFConfig.from_yaml(waf_node.to_yaml)
@@ -163,15 +163,15 @@ module KemalWAF
           @last_mtime = mtime
         end
 
-        Log.info { "Yapılandırma yüklendi: #{@config_file}" }
-        Log.info { "#{@domains.size} domain yapılandırması yüklendi" }
-        # Debug: Domain'leri listele
+        Log.info { "Configuration loaded: #{@config_file}" }
+        Log.info { "#{@domains.size} domain configurations loaded" }
+        # Debug: List domains
         domain_list = @domains.keys.map { |k| "'#{k}'" }.join(", ")
-        Log.info { "Yüklenen domain'ler: #{domain_list}" }
+        Log.info { "Loaded domains: #{domain_list}" }
       rescue ex
-        Log.error { "Yapılandırma yüklenemedi: #{ex.message}" }
+        Log.error { "Failed to load configuration: #{ex.message}" }
         Log.error { ex.backtrace.join("\n") if ex.backtrace }
-        raise "Yapılandırma hatası: #{ex.message}"
+        raise "Configuration error: #{ex.message}"
       end
     end
 
@@ -180,9 +180,9 @@ module KemalWAF
       config.domains.each do |domain, domain_config|
         begin
           uri = URI.parse(domain_config.default_upstream)
-          raise "Geçersiz upstream URL: #{domain_config.default_upstream}" unless uri.host
+          raise "Invalid upstream URL: #{domain_config.default_upstream}" unless uri.host
         rescue ex
-          raise "Domain '#{domain}' için geçersiz upstream URL: #{ex.message}"
+          raise "Invalid upstream URL for domain '#{domain}': #{ex.message}"
         end
       end
 
@@ -190,9 +190,9 @@ module KemalWAF
       if upstream = config.upstream
         begin
           uri = URI.parse(upstream.url)
-          raise "Geçersiz global upstream URL: #{upstream.url}" unless uri.host
+          raise "Invalid global upstream URL: #{upstream.url}" unless uri.host
         rescue ex
-          raise "Global upstream için geçersiz URL: #{ex.message}"
+          raise "Invalid URL for global upstream: #{ex.message}"
         end
       end
     end
@@ -201,9 +201,9 @@ module KemalWAF
       @mutex.synchronize do
         result = @domains[domain]?
         if result.nil?
-          # Debug: Domain bulunamadı, mevcut domain'leri logla
+          # Debug: Domain not found, log available domains
           available = @domains.keys.map { |k| "'#{k}'" }.join(", ")
-          Log.debug { "Domain '#{domain}' bulunamadı. Mevcut domain'ler: #{available}" }
+          Log.debug { "Domain '#{domain}' not found. Available domains: #{available}" }
         end
         result
       end
@@ -231,8 +231,12 @@ module KemalWAF
       return false unless File.exists?(@config_file)
 
       mtime = File.info(@config_file).modification_time
-      if @last_mtime.nil? || mtime > @last_mtime.not_nil!
-        Log.info { "Yapılandırma dosyası değişti, yeniden yükleniyor..." }
+      if last_mtime = @last_mtime
+        mtime > last_mtime
+      else
+        true
+      end
+        Log.info { "Configuration file changed, reloading..." }
         load_config
         true
       else

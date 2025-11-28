@@ -48,7 +48,7 @@ module KemalWAF
       false
     end
 
-    # Size-based rotation için yeni dosya ismi oluştur
+    # Create new file name for size-based rotation
     def get_rotated_file_name(base_file_path : String, current_date : Time = Time.local) : String
       base_name = File.basename(base_file_path, ".log")
       # Tarih kısmını çıkar
@@ -74,7 +74,7 @@ module KemalWAF
         current_date_str = current_date.to_s("%Y-%m-%d")
 
         if file_date != current_date_str
-          # Günlük rotation - yeni tarihli dosya oluştur
+          # Daily rotation - create new dated file
           base_name = File.basename(file_path, ".log")
           # Tarih kısmını çıkar
           if base_name =~ /^(.+)-(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/
@@ -94,7 +94,7 @@ module KemalWAF
         Log.info { "Log dosyası rotate edildi: #{file_path} -> #{new_file_path}" }
         new_file_path
       rescue ex
-        Log.error { "Log rotation hatası: #{ex.message}" }
+        Log.error { "Log rotation error: #{ex.message}" }
         nil
       end
     end
@@ -113,11 +113,11 @@ module KemalWAF
               Log.info { "Eski log dosyası silindi: #{file_path}" }
             end
           rescue ex
-            Log.warn { "Log temizleme hatası #{file_path}: #{ex.message}" }
+            Log.warn { "Log cleanup error #{file_path}: #{ex.message}" }
           end
         end
       rescue ex
-        Log.error { "Log cleanup hatası: #{ex.message}" }
+        Log.error { "Log cleanup error: #{ex.message}" }
       end
     end
 
@@ -127,7 +127,7 @@ module KemalWAF
 
       if should_rotate?(file_path, current_date)
         rotate_log_file(file_path, current_date)
-        # Rotation sonrası yeni dosya
+        # New file after rotation
         file_path = get_current_log_file(base_name, current_date)
       end
 

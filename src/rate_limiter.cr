@@ -2,7 +2,11 @@ require "time"
 require "atomic"
 
 module KemalWAF
-  # Rate limit sonucu
+  # Constants
+  DEFAULT_CLEANUP_INTERVAL_SEC       = 300 # 5 minutes
+  DEFAULT_CLEANUP_MAX_AGE_MULTIPLIER =   2
+
+  # Rate limit result
   struct RateLimitResult
     property allowed : Bool
     property limit : Int32
@@ -129,7 +133,7 @@ module KemalWAF
           last_request = @requests.last?
           if last_request && (now - last_request).total_seconds > max_age_sec
             @requests.clear
-            return true # Temizlendi
+            return true # Cleaned
           end
         end
         false
@@ -158,7 +162,7 @@ module KemalWAF
       @ip_states = Hash(String, IPRateLimitState).new
       @endpoint_limits = [] of EndpointLimit
       @mutex = Mutex.new
-      @cleanup_interval_sec = 300 # 5 dakikada bir temizle
+      @cleanup_interval_sec = DEFAULT_CLEANUP_INTERVAL_SEC
       @last_cleanup = Time.utc
 
       # Cleanup fiber'ı başlat
@@ -276,12 +280,12 @@ module KemalWAF
 
     private def cleanup_old_states(now : Time)
       @mutex.synchronize do
-        max_age = @cleanup_interval_sec * 2 # 2 cleanup interval süresi
+        max_age = @cleanup_interval_sec * DEFAULT_CLEANUP_MAX_AGE_MULTIPLIER
         ips_to_remove = [] of String
 
         @ip_states.each do |ip, state|
           if state.cleanup(now, max_age)
-            # Eğer state tamamen temizlendiyse ve block durumu yoksa, kaldırılabilir
+            # If state is completely cleaned and no block status, can be removed
             ips_to_remove << ip
           end
         end
@@ -290,7 +294,7 @@ module KemalWAF
           @ip_states.delete(ip)
         end
 
-        Log.debug { "Rate limiter cleanup: #{ips_to_remove.size} IP state temizlendi" } if ips_to_remove.size > 0
+        Log.debug { "Rate limiter cleanup: #{ips_to_remove.size} IP states cleaned" } if ips_to_remove.size > 0
       end
     end
   end

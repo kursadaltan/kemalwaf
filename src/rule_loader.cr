@@ -26,7 +26,7 @@ module KemalWAF
             # String formatı: "ARGS" (eski format - backward compatibility)
             result << VariableSpec.new(item.value)
           when YAML::Nodes::Mapping
-            # Mapping formatı: {type: "HEADERS", names: [...]} (yeni format)
+            # Mapping format: {type: "HEADERS", names: [...]} (new format)
             type_val = ""
             names_val = nil
 
@@ -53,7 +53,7 @@ module KemalWAF
     end
   end
 
-  # Kural yapısı
+  # Rule structure
   struct Rule
     include YAML::Serializable
 
@@ -87,18 +87,18 @@ module KemalWAF
     end
 
     def compile_pattern
-      # Sadece regex operator için pattern compile et
+      # Only compile pattern for regex operator
       op = @operator || "regex"
-      if op == "regex" && @pattern
-        @compiled_regex = Regex.new(@pattern.not_nil!, Regex::Options::IGNORE_CASE)
+      if op == "regex" && pattern = @pattern
+        @compiled_regex = Regex.new(pattern, Regex::Options::IGNORE_CASE)
       end
     rescue ex
-      # Log hatası - compile_pattern sırasında log yapmaya gerek yok
+      # Log error - no need to log during compile_pattern
       @compiled_regex = nil
     end
   end
 
-  # Kural yükleyici ve hot-reload yöneticisi
+  # Rule loader and hot-reload manager
   class RuleLoader
     Log = ::Log.for("rule_loader")
 
@@ -131,30 +131,30 @@ module KemalWAF
           content = File.read(file_path)
           yaml_data = YAML.parse(content)
 
-          # Yeni format: root Hash ve "rules" anahtarı olmalı
+          # New format: root must be Hash and contain "rules" key
           unless yaml_data.raw.is_a?(Hash) && yaml_data["rules"]?
-            Log.error { "Geçersiz YAML formatı #{file_path}: root bir Hash olmalı ve 'rules' anahtarını içermeli" }
+            Log.error { "Invalid YAML format #{file_path}: root must be a Hash and contain 'rules' key" }
             next
           end
 
           rules_node = yaml_data["rules"]
           unless rules_node.raw.is_a?(Array)
-            Log.error { "Kural yüklenemedi #{file_path}: 'rules' anahtarı bir dizi (Array) olmalı" }
+            Log.error { "Failed to load rules from #{file_path}: 'rules' key must be an Array" }
             next
           end
 
           rule_count = 0
           rules_node.as_a.each do |rule_node|
-            # Her bir rule_node'u YAML string'e çevir ve Rule'a parse et
+            # Convert each rule_node to YAML string and parse to Rule
             rule_yaml = rule_node.to_yaml
             rule = Rule.from_yaml(rule_yaml)
             rule.compile_pattern
             new_rules << rule
             rule_count += 1
           end
-          Log.info { "#{file_path} dosyasından #{rule_count} kural yüklendi" }
+          Log.info { "Loaded #{rule_count} rules from #{file_path}" }
         rescue ex
-          Log.error { "Kural yüklenemedi #{file_path}: #{ex.message}" }
+          Log.error { "Failed to load rules from #{file_path}: #{ex.message}" }
           Log.error { ex.backtrace.join("\n") if ex.backtrace }
         end
       end
@@ -164,7 +164,7 @@ module KemalWAF
         @file_mtimes = new_mtimes
       end
 
-      Log.info { "Toplam #{@rules.size} kural yüklendi" }
+      Log.info { "Total #{@rules.size} rules loaded" }
     end
 
     def check_and_reload
@@ -178,7 +178,7 @@ module KemalWAF
             break
           end
         rescue ex
-          Log.warn { "Dosya kontrolü başarısız #{file_path}: #{ex.message}" }
+          Log.warn { "File check failed for #{file_path}: #{ex.message}" }
         end
       end
 
@@ -191,7 +191,7 @@ module KemalWAF
       end
 
       if needs_reload
-        Log.info { "Kural dosyalarında değişiklik tespit edildi, yeniden yükleniyor..." }
+        Log.info { "Changes detected in rule files, reloading..." }
         load_rules
       end
     end

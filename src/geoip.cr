@@ -52,7 +52,7 @@ module KemalWAF
       # MMDB dosyası kontrolü
       if mmdb_path = @mmdb_file_path
         unless File.exists?(mmdb_path)
-          Log.warn { "MMDB dosyası bulunamadı: #{mmdb_path}" }
+          Log.warn { "MMDB file not found: #{mmdb_path}" }
           @mmdb_file_path = nil
         else
           # mmdblookup aracının yüklü olup olmadığını kontrol et
@@ -61,9 +61,9 @@ module KemalWAF
             error = IO::Memory.new
             status = Process.run("mmdblookup", ["--version"], output: output, error: error)
             if status.success?
-              Log.info { "MMDB dosyası yüklendi: #{mmdb_path}" }
+              Log.info { "MMDB file loaded: #{mmdb_path}" }
             else
-              Log.warn { "mmdblookup aracı bulunamadı. GeoIP çalışmayacak. Yüklemek için: brew install libmaxminddb" }
+              Log.warn { "mmdblookup tool not found. GeoIP will not work. To install: brew install libmaxminddb" }
               @mmdb_file_path = nil
             end
           rescue
@@ -132,7 +132,7 @@ module KemalWAF
 
       result
     rescue ex
-      Log.error { "GeoIP lookup hatası: #{ex.message}" }
+      Log.error { "GeoIP lookup error: #{ex.message}" }
       nil
     end
 
@@ -145,7 +145,7 @@ module KemalWAF
     def add_blocked_country(country_code : String)
       @mutex.synchronize do
         @blocked_countries.add(country_code.upcase)
-        Log.info { "Blocked country eklendi: #{country_code.upcase}" }
+        Log.info { "Blocked country added: #{country_code.upcase}" }
       end
     end
 
@@ -153,7 +153,7 @@ module KemalWAF
     def add_allowed_country(country_code : String)
       @mutex.synchronize do
         @allowed_countries.add(country_code.upcase)
-        Log.info { "Allowed country eklendi: #{country_code.upcase}" }
+        Log.info { "Allowed country added: #{country_code.upcase}" }
       end
     end
 
@@ -161,7 +161,7 @@ module KemalWAF
     def remove_blocked_country(country_code : String)
       @mutex.synchronize do
         @blocked_countries.delete(country_code.upcase)
-        Log.info { "Blocked country kaldırıldı: #{country_code.upcase}" }
+        Log.info { "Blocked country removed: #{country_code.upcase}" }
       end
     end
 
@@ -169,7 +169,7 @@ module KemalWAF
     def remove_allowed_country(country_code : String)
       @mutex.synchronize do
         @allowed_countries.delete(country_code.upcase)
-        Log.info { "Allowed country kaldırıldı: #{country_code.upcase}" }
+        Log.info { "Allowed country removed: #{country_code.upcase}" }
       end
     end
 
@@ -188,7 +188,7 @@ module KemalWAF
     def clear_cache
       @mutex.synchronize do
         @cache.clear
-        Log.info { "GeoIP cache temizlendi" }
+        Log.info { "GeoIP cache cleared" }
       end
     end
 
@@ -208,9 +208,11 @@ module KemalWAF
         # Ülke kodu al
         output = IO::Memory.new
         error = IO::Memory.new
+        mmdb_path = @mmdb_file_path
+        return nil unless mmdb_path
         status = Process.run(
           "mmdblookup",
-          ["--file", @mmdb_file_path.not_nil!, "--ip", ip, "country", "iso_code"],
+          ["--file", mmdb_path, "--ip", ip, "country", "iso_code"],
           output: output,
           error: error
         )
@@ -225,7 +227,7 @@ module KemalWAF
         error_name = IO::Memory.new
         status_name = Process.run(
           "mmdblookup",
-          ["--file", @mmdb_file_path.not_nil!, "--ip", ip, "country", "names", "en"],
+          ["--file", mmdb_path, "--ip", ip, "country", "names", "en"],
           output: output_name,
           error: error_name
         )
@@ -241,7 +243,7 @@ module KemalWAF
           country_name: country_name
         )
       rescue ex
-        Log.warn { "MMDB lookup hatası: #{ex.message}" }
+        Log.warn { "MMDB lookup error: #{ex.message}" }
         nil
       end
     end
@@ -264,7 +266,7 @@ module KemalWAF
           end
         end
         expired_keys.each { |ip| @cache.delete(ip) }
-        Log.debug { "GeoIP cache temizlendi: #{expired_keys.size} entry kaldırıldı" } if expired_keys.size > 0
+        Log.debug { "GeoIP cache cleaned: #{expired_keys.size} entries removed" } if expired_keys.size > 0
       end
     end
   end

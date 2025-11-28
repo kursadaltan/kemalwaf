@@ -20,7 +20,7 @@ module KemalWAF
     def initialize(cidr_string : String)
       # CIDR format: "192.168.1.0/24" veya "2001:db8::/32"
       parts = cidr_string.split('/')
-      raise ArgumentError.new("Geçersiz CIDR formatı: #{cidr_string}") if parts.size != 2
+      raise ArgumentError.new("Invalid CIDR format: #{cidr_string}") if parts.size != 2
 
       network_ip_str = parts[0].strip
       prefix_val = parts[1].to_i
@@ -30,7 +30,7 @@ module KemalWAF
       begin
         validate_ip(network_ip_str)
       rescue ex
-        raise ArgumentError.new("Geçersiz CIDR: #{cidr_string} - #{ex.message}")
+        raise ArgumentError.new("Invalid CIDR: #{cidr_string} - #{ex.message}")
       end
 
       @network_ip = network_ip_str
@@ -79,12 +79,14 @@ module KemalWAF
     end
 
     private def ipv6_in_cidr?(ip : String, network : String, prefix : Int32) : Bool
-      # IPv6 için basitleştirilmiş kontrol (tam implementasyon daha karmaşık)
-      # Bu basit bir implementasyon, production için daha gelişmiş bir çözüm gerekebilir
+      # Simplified IPv6 CIDR check (full implementation is more complex)
+      # NOTE: This is a simplified implementation that only does exact match.
+      # A proper IPv6 CIDR implementation requires 128-bit arithmetic operations
+      # to check if an IPv6 address falls within a network range.
+      # For production use, consider using a proper IPv6 library that handles
+      # CIDR calculations correctly (e.g., ipaddr library or similar).
+      # TODO: Implement proper 128-bit IPv6 CIDR matching
       begin
-        # IPv6 CIDR kontrolü için basit yaklaşım
-        # Gerçek implementasyon için 128-bit işlemler gerekir
-        # Şimdilik sadece exact match kontrol ediyoruz
         ip == network
       rescue
         false
@@ -149,7 +151,7 @@ module KemalWAF
     def add_whitelist_ip(ip : String)
       @mutex.synchronize do
         @whitelist.add(ip.strip)
-        Log.info { "Whitelist'e IP eklendi: #{ip}" }
+        Log.info { "IP added to whitelist: #{ip}" }
       end
     end
 
@@ -157,7 +159,7 @@ module KemalWAF
     def add_blacklist_ip(ip : String)
       @mutex.synchronize do
         @blacklist.add(ip.strip)
-        Log.info { "Blacklist'e IP eklendi: #{ip}" }
+        Log.info { "IP added to blacklist: #{ip}" }
       end
     end
 
@@ -166,7 +168,7 @@ module KemalWAF
       @mutex.synchronize do
         cidr = CIDRNetwork.new(cidr_string)
         @cidr_whitelist << cidr
-        Log.info { "Whitelist'e CIDR eklendi: #{cidr_string}" }
+        Log.info { "CIDR added to whitelist: #{cidr_string}" }
       end
     rescue ex
       Log.error { "CIDR eklenemedi: #{cidr_string} - #{ex.message}" }
@@ -177,7 +179,7 @@ module KemalWAF
       @mutex.synchronize do
         cidr = CIDRNetwork.new(cidr_string)
         @cidr_blacklist << cidr
-        Log.info { "Blacklist'e CIDR eklendi: #{cidr_string}" }
+        Log.info { "CIDR added to blacklist: #{cidr_string}" }
       end
     rescue ex
       Log.error { "CIDR eklenemedi: #{cidr_string} - #{ex.message}" }
@@ -212,7 +214,7 @@ module KemalWAF
           end
         end
 
-        Log.info { "IP listesi yüklendi: #{file_path} (#{list_type})" }
+        Log.info { "IP list loaded: #{file_path} (#{list_type})" }
       rescue ex
         Log.error { "IP listesi yüklenemedi: #{file_path} - #{ex.message}" }
       end
@@ -222,7 +224,7 @@ module KemalWAF
     def remove_whitelist_ip(ip : String)
       @mutex.synchronize do
         @whitelist.delete(ip.strip)
-        Log.info { "Whitelist'ten IP kaldırıldı: #{ip}" }
+        Log.info { "IP removed from whitelist: #{ip}" }
       end
     end
 
@@ -230,7 +232,7 @@ module KemalWAF
     def remove_blacklist_ip(ip : String)
       @mutex.synchronize do
         @blacklist.delete(ip.strip)
-        Log.info { "Blacklist'ten IP kaldırıldı: #{ip}" }
+        Log.info { "IP removed from blacklist: #{ip}" }
       end
     end
 
@@ -253,7 +255,7 @@ module KemalWAF
         @blacklist.clear
         @cidr_whitelist.clear
         @cidr_blacklist.clear
-        Log.info { "Tüm IP listeleri temizlendi" }
+        Log.info { "All IP lists cleared" }
       end
     end
   end

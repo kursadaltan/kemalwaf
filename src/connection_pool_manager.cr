@@ -4,7 +4,12 @@ require "uri"
 require "openssl"
 
 module KemalWAF
-  # Connection pool manager - tüm pool'ları yöneten singleton
+  # Constants
+  DEFAULT_CLEANUP_INTERVAL_MINUTES  =  5
+  DEFAULT_IDLE_POOL_TIMEOUT_MINUTES = 30
+  DEFAULT_IDLE_TIMEOUT_MINUTES      =  5
+
+  # Connection pool manager - singleton managing all pools
   class ConnectionPoolManager
     Log = ::Log.for("connection_pool_manager")
 
@@ -18,13 +23,13 @@ module KemalWAF
       @pools = Hash(String, ConnectionPool).new
       @mutex = Mutex.new
       @config = config
-      @cleanup_interval = 5.minutes
+      @cleanup_interval = DEFAULT_CLEANUP_INTERVAL_MINUTES.minutes
       @running = Atomic(Int32).new(1)
 
       # Cleanup fiber'ı başlat
       spawn cleanup_loop
 
-      Log.info { "ConnectionPoolManager başlatıldı" }
+      Log.info { "ConnectionPoolManager started" }
     end
 
     # Pool key oluştur: scheme://host:port:verify_ssl
@@ -47,7 +52,7 @@ module KemalWAF
         pool = @pools[key]?
 
         unless pool
-          # Yeni pool oluştur
+          # Create new pool
           config = @config || default_config
           return nil unless config.enabled
 
@@ -61,7 +66,7 @@ module KemalWAF
           )
 
           @pools[key] = pool
-          Log.info { "Yeni pool oluşturuldu: #{key}" }
+          Log.info { "New pool created: #{key}" }
         end
 
         pool
@@ -73,7 +78,7 @@ module KemalWAF
       @mutex.synchronize do
         if pool = @pools.delete(key)
           pool.close_all
-          Log.info { "Pool kaldırıldı: #{key}" }
+          Log.info { "Pool removed: #{key}" }
         end
       end
     end
@@ -84,17 +89,18 @@ module KemalWAF
 
       @mutex.synchronize do
         now = Time.utc
-        idle_pool_timeout = 30.minutes # Pool'un kendisi idle ise kaldır
+        idle_pool_timeout = DEFAULT_IDLE_POOL_TIMEOUT_MINUTES.minutes # Remove if pool itself is idle
 
         pools_to_remove = [] of String
 
         @pools.each do |key, pool|
           stats = pool.stats
-          last_used_str = stats["last_used"].as(String)
-          last_used = Time.parse_rfc3339(last_used_str)
+          if last_used_str = stats["last_used"]?.as?(String)
+            last_used = Time.parse_rfc3339(last_used_str)
 
-          if (now - last_used) > idle_pool_timeout
-            pools_to_remove << key
+            if (now - last_used) > idle_pool_timeout
+              pools_to_remove << key
+            end
           end
         end
 
@@ -102,11 +108,11 @@ module KemalWAF
           remove_pool(key)
         end
 
-        Log.debug { "Idle pool cleanup: #{pools_to_remove.size} pool kaldırıldı" } if pools_to_remove.size > 0
+        Log.debug { "Idle pool cleanup: #{pools_to_remove.size} pools removed" } if pools_to_remove.size > 0
       end
     end
 
-    # Tüm pool'ları kapat
+    # Close all pools
     def shutdown_all
       @running.set(0)
 
@@ -117,7 +123,7 @@ module KemalWAF
         end
         @pools.clear
 
-        Log.info { "ConnectionPoolManager kapatıldı: #{pool_count} pool kapatıldı" }
+        Log.info { "ConnectionPoolManager shut down: #{pool_count} pools closed" }
       end
     end
 
@@ -161,8 +167,8 @@ module KemalWAF
         timeout_str.to_i.seconds
       end
     rescue
-      # Parse hatası - default değer
-      5.minutes
+      # Parse error - default value
+      DEFAULT_IDLE_TIMEOUT_MINUTES.minutes
     end
 
     private def cleanup_loop
