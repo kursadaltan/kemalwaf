@@ -5,9 +5,8 @@ require "openssl"
 
 module KemalWAF
   # Constants
-  DEFAULT_CLEANUP_INTERVAL_MINUTES  =  5
-  DEFAULT_IDLE_POOL_TIMEOUT_MINUTES = 30
-  DEFAULT_IDLE_TIMEOUT_MINUTES      =  5
+  DEFAULT_MANAGER_CLEANUP_INTERVAL_MINUTES =  5
+  DEFAULT_IDLE_POOL_TIMEOUT_MINUTES        = 30
 
   # Connection pool manager - singleton managing all pools
   class ConnectionPoolManager
@@ -23,7 +22,7 @@ module KemalWAF
       @pools = Hash(String, ConnectionPool).new
       @mutex = Mutex.new
       @config = config
-      @cleanup_interval = DEFAULT_CLEANUP_INTERVAL_MINUTES.minutes
+      @cleanup_interval = DEFAULT_MANAGER_CLEANUP_INTERVAL_MINUTES.minutes
       @running = Atomic(Int32).new(1)
 
       # Cleanup fiber'ı başlat

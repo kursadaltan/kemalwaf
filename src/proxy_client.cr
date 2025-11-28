@@ -5,9 +5,7 @@ require "./connection_pool_manager"
 
 module KemalWAF
   # Constants
-  DEFAULT_RETRY_BACKOFF_MS    = 50
-  DEFAULT_READ_TIMEOUT_SEC    = 30
-  DEFAULT_CONNECT_TIMEOUT_SEC = 10
+  DEFAULT_RETRY_BACKOFF_MS = 50
 
   # Upstream proxy client
   class ProxyClient
@@ -28,7 +26,7 @@ module KemalWAF
     )
       if upstream_url
         parsed_uri = URI.parse(upstream_url)
-        raise "Invalid upstream URL" unless parsed_uri.host
+        raise "Geçersiz upstream URL" unless parsed_uri.host
         @default_upstream_uri = parsed_uri
       else
         @default_upstream_uri = nil
@@ -194,7 +192,7 @@ module KemalWAF
       Log.error { "All retry attempts failed (#{@max_retries} attempts)" }
       HTTP::Client::Response.new(
         status_code: 502,
-        body: {error: "Upstream connection error", detail: last_exception.try(&.message) || "Unknown error", retries: @max_retries}.to_json,
+        body: {error: "Upstream bağlantı hatası", detail: last_exception.try(&.message) || "Bilinmeyen hata", retries: @max_retries}.to_json,
         headers: HTTP::Headers{"Content-Type" => "application/json"}
       )
     end

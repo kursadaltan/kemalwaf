@@ -89,8 +89,10 @@ module KemalWAF
     def compile_pattern
       # Only compile pattern for regex operator
       op = @operator || "regex"
-      if op == "regex" && pattern = @pattern
-        @compiled_regex = Regex.new(pattern, Regex::Options::IGNORE_CASE)
+      if op == "regex"
+        if pattern = @pattern
+          @compiled_regex = Regex.new(pattern, Regex::Options::IGNORE_CASE)
+        end
       end
     rescue ex
       # Log error - no need to log during compile_pattern
@@ -133,13 +135,13 @@ module KemalWAF
 
           # New format: root must be Hash and contain "rules" key
           unless yaml_data.raw.is_a?(Hash) && yaml_data["rules"]?
-            Log.error { "Invalid YAML format #{file_path}: root must be a Hash and contain 'rules' key" }
+            Log.warn { "Invalid YAML format #{file_path}: root must be a Hash and contain 'rules' key" }
             next
           end
 
           rules_node = yaml_data["rules"]
           unless rules_node.raw.is_a?(Array)
-            Log.error { "Failed to load rules from #{file_path}: 'rules' key must be an Array" }
+            Log.warn { "Failed to load rules from #{file_path}: 'rules' key must be an Array" }
             next
           end
 
@@ -154,8 +156,8 @@ module KemalWAF
           end
           Log.info { "Loaded #{rule_count} rules from #{file_path}" }
         rescue ex
-          Log.error { "Failed to load rules from #{file_path}: #{ex.message}" }
-          Log.error { ex.backtrace.join("\n") if ex.backtrace }
+          Log.warn { "Failed to load rules from #{file_path}: #{ex.message}" }
+          Log.debug { ex.backtrace.join("\n") if ex.backtrace }
         end
       end
 

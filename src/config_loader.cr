@@ -231,11 +231,13 @@ module KemalWAF
       return false unless File.exists?(@config_file)
 
       mtime = File.info(@config_file).modification_time
-      if last_mtime = @last_mtime
-        mtime > last_mtime
-      else
-        true
-      end
+      changed = if last_mtime = @last_mtime
+                  mtime > last_mtime
+                else
+                  true
+                end
+
+      if changed
         Log.info { "Configuration file changed, reloading..." }
         load_config
         true

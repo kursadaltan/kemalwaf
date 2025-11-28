@@ -31,7 +31,9 @@ module KemalWAF
 
     # Check if LibInjection is available
     def self.available? : Bool
-      return @@available if @@available
+      if @@available
+        return @@available.not_nil!
+      end
 
       @@initialized = true
 
