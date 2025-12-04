@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-12-04
+
+### Added
+
+#### TLS/HTTPS Support
+- **TLS/HTTPS Server**: WAF can now serve traffic over HTTPS
+  - HTTP and HTTPS can run simultaneously on different ports
+  - Configurable HTTP/HTTPS ports
+  - OpenSSL-based secure connection support
+
+#### SNI (Server Name Indication) Support
+- **Per-domain certificate management**: Each domain can use its own TLS certificate
+  - `SNIManager` class for domain-based certificate management
+  - Wildcard certificate support (`*.example.com`)
+  - Added `cert_file` and `key_file` fields to domain configuration
+  - Fallback certificate mechanism for unmatched domains
+
+#### Let's Encrypt Integration
+- **Automatic certificate provisioning**: Free SSL certificates via Let's Encrypt
+  - `LetsEncryptManager` class with ACME protocol support
+  - HTTP-01 challenge support (`/.well-known/acme-challenge/` endpoint)
+  - Certbot integration (used when available)
+  - Added `letsencrypt_enabled` and `letsencrypt_email` to domain configuration
+  - Staging mode support (`LETSENCRYPT_STAGING=true`)
+
+#### Automatic Certificate Renewal
+- **Background certificate renewal**: Certificates are automatically renewed
+  - Certificate check every 12 hours
+  - Automatic renewal 30 days before expiration
+  - Hot-reload: Renewed certificates are loaded without restart
+
+#### Self-Signed Certificates
+- **Auto-generated certificates for test/development**: Self-signed certificate generation
+  - Secure generation using OpenSSL command-line tool
+  - `auto_generate: true` configuration option
+  - 365-day validity period
+  - SAN (Subject Alternative Name) support
+
+### New Files
+- `src/tls_manager.cr` - TLS certificate management and SNI support
+- `src/letsencrypt_manager.cr` - Let's Encrypt ACME integration
+
+### Changed
+- `src/config_loader.cr` - Added TLS fields to `DomainConfig` and `ServerConfig` structs
+- `src/waf.cr` - TLS, SNI, and Let's Encrypt integration
+- `config/waf.yml.example` - TLS and per-domain certificate examples
+- `README.md` - TLS, SNI, and Let's Encrypt documentation
+
+### Configuration
+
+#### New Configuration Options
+
+```yaml
+waf:
+  server:
+    http_enabled: true      # Enable HTTP server (default: true)
+    https_enabled: true     # Enable HTTPS server (default: false)
+    http_port: 3030         # HTTP port
+    https_port: 3443        # HTTPS port
+    tls:
+      cert_file: /path/to/cert.pem    # Global certificate
+      key_file: /path/to/key.pem      # Global private key
+      auto_generate: false            # Auto-generate self-signed cert
+      auto_cert_dir: config/certs     # Certificate directory
+      
+  domains:
+    "example.com":
+      cert_file: /path/to/example.com/cert.pem   # Domain certificate (SNI)
+      key_file: /path/to/example.com/key.pem
+      letsencrypt_enabled: true                   # Auto Let's Encrypt
+      letsencrypt_email: admin@example.com
+```
+
+#### New Environment Variables
+- `HTTP_ENABLED` - Enable HTTP server (default: true)
+- `HTTPS_ENABLED` - Enable HTTPS server (default: false)
+- `HTTP_PORT` - HTTP port (default: 3030)
+- `HTTPS_PORT` - HTTPS port (default: 3443)
+- `TLS_CERT_FILE` - TLS certificate file path
+- `TLS_KEY_FILE` - TLS private key file path
+- `TLS_AUTO_GENERATE` - Auto-generate self-signed certificate
+- `LETSENCRYPT_STAGING` - Let's Encrypt staging mode
+
+### Improved
+- Configuration change detection logic improved
+- Connection pool manager constants reorganized
+- LibInjection availability check enhanced
+- Rule loading error handling improved with warnings and debug logs
+- More descriptive log messages
+
 ## [1.0.0] - 2025-11-28
 
 ### Added
@@ -64,5 +154,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contributing guidelines
 - Architecture documentation
 
-[Unreleased]: https://github.com/kursadaltan/kemalwaf/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/kursadaltan/kemalwaf/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/kursadaltan/kemalwaf/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kursadaltan/kemalwaf/releases/tag/v1.0.0
