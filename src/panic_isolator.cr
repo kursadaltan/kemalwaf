@@ -128,7 +128,7 @@ module KemalWAF
     # Creates a fiber with automatic crash recovery
     # If the fiber crashes, it will be automatically restarted
     # =============================================================================
-    def spawn_isolated(name : String, restart_delay_ms : Int32? = nil, &block : -> )
+    def spawn_isolated(name : String, restart_delay_ms : Int32? = nil, &block : ->)
       delay = restart_delay_ms || @restart_delay_ms
 
       # Register fiber
@@ -147,7 +147,7 @@ module KemalWAF
     # =============================================================================
     # Spawns a fiber that will retry on failure with backoff
     # =============================================================================
-    def spawn_with_retry(name : String, max_retries : Int32 = 3, base_delay_ms : Int32 = 100, &block : -> )
+    def spawn_with_retry(name : String, max_retries : Int32 = 3, base_delay_ms : Int32 = 100, &block : ->)
       fiber_info = @mutex.synchronize do
         new_info = IsolatedFiberInfo.new(name, base_delay_ms)
         @fibers[name] = new_info
@@ -165,7 +165,7 @@ module KemalWAF
             retries += 1
             fiber_info.record_crash(ex.message || "Unknown error")
             @total_crashes.add(1_i64)
-            
+
             Log.error { "Fiber #{name} crashed (attempt #{retries}/#{max_retries}): #{ex.message}" }
             Log.debug { ex.backtrace.join("\n") if ex.backtrace }
 
@@ -211,10 +211,10 @@ module KemalWAF
       @mutex.synchronize do
         @fibers.map do |name, info|
           {
-            name: name,
-            state: info.state,
-            crash_count: info.crash_count,
-            uptime_seconds: info.uptime.total_seconds.to_i64
+            name:           name,
+            state:          info.state,
+            crash_count:    info.crash_count,
+            uptime_seconds: info.uptime.total_seconds.to_i64,
           }
         end
       end
@@ -230,21 +230,20 @@ module KemalWAF
       crashed_fibers: Int32,
       stopped_fibers: Int32,
       total_crashes: Int64,
-      total_restarts: Int64
-    )
+      total_restarts: Int64)
       @mutex.synchronize do
         running = @fibers.count { |_, info| info.state.running? }
         crashed = @fibers.count { |_, info| info.state.crashed? }
         stopped = @fibers.count { |_, info| info.state.stopped? }
 
         {
-          enabled: @enabled,
-          total_fibers: @fibers.size,
+          enabled:        @enabled,
+          total_fibers:   @fibers.size,
           running_fibers: running,
           crashed_fibers: crashed,
           stopped_fibers: stopped,
-          total_crashes: @total_crashes.get,
-          total_restarts: @total_restarts.get
+          total_crashes:  @total_crashes.get,
+          total_restarts: @total_restarts.get,
         }
       end
     end
@@ -267,7 +266,7 @@ module KemalWAF
           rescue ex
             @total_crashes.add(1_i64)
             info.record_crash(ex.message || "Unknown error")
-            
+
             Log.error { "Fiber #{name} crashed: #{ex.message}" }
             Log.debug { ex.backtrace.join("\n") if ex.backtrace }
 
@@ -296,11 +295,11 @@ module KemalWAF
   # Helper Module for Easy Access
   # =============================================================================
   module Isolated
-    def self.spawn(name : String, &block : -> )
+    def self.spawn(name : String, &block : ->)
       PanicIsolator.instance.spawn_isolated(name, &block)
     end
 
-    def self.spawn_with_retry(name : String, max_retries : Int32 = 3, &block : -> )
+    def self.spawn_with_retry(name : String, max_retries : Int32 = 3, &block : ->)
       PanicIsolator.instance.spawn_with_retry(name, max_retries, &block)
     end
 
@@ -313,4 +312,3 @@ module KemalWAF
     end
   end
 end
-

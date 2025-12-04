@@ -1136,14 +1136,14 @@ end
 if KemalWAF::EFFECTIVE_HTTP_ENABLED && KemalWAF::EFFECTIVE_HTTPS_ENABLED
   # Both HTTP and HTTPS enabled - start both servers
   KemalWAF::Log.info { "WAF will listen on HTTP port #{KemalWAF::EFFECTIVE_HTTP_PORT} and HTTPS port #{KemalWAF::EFFECTIVE_HTTPS_PORT}" }
-  
+
   # Configure TLS for HTTPS
   if tls_manager = KemalWAF.tls_manager
     tls_context = tls_manager.get_tls_context
     if tls_context
       # Store TLS context in a variable that won't be nil
       final_tls_context = tls_context.not_nil!
-      
+
       # Start HTTPS server in a fiber using Kemal's handlers
       spawn do
         begin
@@ -1153,7 +1153,7 @@ if KemalWAF::EFFECTIVE_HTTP_ENABLED && KemalWAF::EFFECTIVE_HTTPS_ENABLED
               break if context.response.closed?
             end
           end
-          
+
           https_server.bind_tls "0.0.0.0", KemalWAF::EFFECTIVE_HTTPS_PORT, final_tls_context
           KemalWAF::Log.info { "HTTPS server started on port #{KemalWAF::EFFECTIVE_HTTPS_PORT}" }
           https_server.listen
@@ -1162,7 +1162,7 @@ if KemalWAF::EFFECTIVE_HTTP_ENABLED && KemalWAF::EFFECTIVE_HTTPS_ENABLED
           KemalWAF::Log.error { ex.inspect_with_backtrace }
         end
       end
-      
+
       KemalWAF::Log.info { "TLS/SSL configured successfully" }
     else
       KemalWAF::Log.error { "Failed to configure TLS/SSL. HTTPS will not be available." }
@@ -1172,7 +1172,7 @@ if KemalWAF::EFFECTIVE_HTTP_ENABLED && KemalWAF::EFFECTIVE_HTTPS_ENABLED
     KemalWAF::Log.error { "TLS Manager not initialized. HTTPS will not be available." }
     exit 1
   end
-  
+
   # Start HTTP server
   Kemal.config.port = KemalWAF::EFFECTIVE_HTTP_PORT
   Kemal.config.ssl = nil
@@ -1182,7 +1182,7 @@ elsif KemalWAF::EFFECTIVE_HTTPS_ENABLED
   # Only HTTPS enabled
   Kemal.config.port = KemalWAF::EFFECTIVE_HTTPS_PORT
   KemalWAF::Log.info { "WAF will listen on HTTPS port #{KemalWAF::EFFECTIVE_HTTPS_PORT}" }
-  
+
   if tls_manager = KemalWAF.tls_manager
     tls_context = tls_manager.get_tls_context
     if tls_context
@@ -1196,7 +1196,7 @@ elsif KemalWAF::EFFECTIVE_HTTPS_ENABLED
     KemalWAF::Log.error { "TLS Manager not initialized. HTTPS will not be available." }
     exit 1
   end
-  
+
   Kemal.run
 else
   # Only HTTP enabled (default)

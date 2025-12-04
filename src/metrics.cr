@@ -26,8 +26,8 @@ module KemalWAF
   class HistogramBuckets
     @buckets : Array(Float64)
     @counts : Array(Atomic(Int64))
-    @sum : Atomic(Int64)     # Sum in microseconds
-    @count : Atomic(Int64)   # Total count
+    @sum : Atomic(Int64)   # Sum in microseconds
+    @count : Atomic(Int64) # Total count
 
     def initialize(@buckets : Array(Float64) = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0])
       @counts = @buckets.map { Atomic(Int64).new(0_i64) }

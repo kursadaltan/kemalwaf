@@ -13,10 +13,10 @@ module KemalWAF
   # =============================================================================
 
   # Constants
-  SHARD_COUNT                   = 64
-  DEFAULT_CLEANUP_INTERVAL_SEC  = 300 # 5 minutes
-  DEFAULT_CLEANUP_MAX_AGE_MULTIPLIER = 2
-  EVICTION_MAX_DURATION_MS      = 2 # Max 2ms for eviction
+  SHARD_COUNT                        =  64
+  DEFAULT_CLEANUP_INTERVAL_SEC       = 300 # 5 minutes
+  DEFAULT_CLEANUP_MAX_AGE_MULTIPLIER =   2
+  EVICTION_MAX_DURATION_MS           =   2 # Max 2ms for eviction
 
   # Rate limit result
   struct RateLimitResult
@@ -189,7 +189,7 @@ module KemalWAF
     # Get or create counter for key
     def get_or_create(key : String, limit : Int32? = nil, window_sec : Int32? = nil) : SlidingWindowCounter
       idx = shard_index(key)
-      
+
       @shard_locks[idx].synchronize do
         counter = @shards[idx][key]?
         return counter if counter
@@ -220,7 +220,7 @@ module KemalWAF
     end
 
     # Iterate over all keys matching prefix
-    def each_with_prefix(prefix : String, &block : String, SlidingWindowCounter -> )
+    def each_with_prefix(prefix : String, &block : String, SlidingWindowCounter ->)
       SHARD_COUNT.times do |idx|
         @shard_locks[idx].synchronize do
           @shards[idx].each do |key, counter|
@@ -387,9 +387,9 @@ module KemalWAF
     # Get statistics
     def stats : NamedTuple(active_counters: Int32, default_limit: Int32, default_window_sec: Int32)
       {
-        active_counters: @ip_states.size,
-        default_limit: @default_limit,
-        default_window_sec: @default_window_sec
+        active_counters:    @ip_states.size,
+        default_limit:      @default_limit,
+        default_window_sec: @default_window_sec,
       }
     end
 

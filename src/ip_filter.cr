@@ -27,11 +27,11 @@ module KemalWAF
   # Supports both IPv4 (32 bits) and IPv6 (128 bits)
   # =============================================================================
   class RadixTreeNode
-    property left : RadixTreeNode?     # 0 bit
-    property right : RadixTreeNode?    # 1 bit
-    property is_terminal : Bool        # Is this a valid CIDR endpoint?
-    property prefix : Int32            # CIDR prefix length
-    property network : String          # Original network string
+    property left : RadixTreeNode?  # 0 bit
+    property right : RadixTreeNode? # 1 bit
+    property is_terminal : Bool     # Is this a valid CIDR endpoint?
+    property prefix : Int32         # CIDR prefix length
+    property network : String       # Original network string
 
     def initialize
       @left = nil

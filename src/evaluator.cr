@@ -17,37 +17,37 @@ module KemalWAF
 
   # Variable type indices for zero-allocation lookup
   enum VariableType
-    RequestLine    = 0
+    RequestLine     = 0
     RequestFilename = 1
     RequestBasename = 2
-    Args           = 3
-    ArgsNames      = 4
-    Headers        = 5
-    Cookie         = 6
-    CookieNames    = 7
-    Body           = 8
-    Unknown        = 9
+    Args            = 3
+    ArgsNames       = 4
+    Headers         = 5
+    Cookie          = 6
+    CookieNames     = 7
+    Body            = 8
+    Unknown         = 9
   end
 
   # Operator type indices for jump-table dispatch
   enum OperatorType
-    Regex           = 0
-    Contains        = 1
-    StartsWith      = 2
-    EndsWith        = 3
-    Equals          = 4
+    Regex            = 0
+    Contains         = 1
+    StartsWith       = 2
+    EndsWith         = 3
+    Equals           = 4
     LibInjectionSqli = 5
     LibInjectionXss  = 6
-    Unknown         = 7
+    Unknown          = 7
   end
 
   # Constants for buffer sizes
-  MAX_VARIABLE_VALUES = 128
+  MAX_VARIABLE_VALUES =  128
   MAX_VALUE_LENGTH    = 8192
-  MAX_HEADERS         = 64
-  MAX_ARGS            = 64
-  MAX_COOKIES         = 32
-  BUFFER_POOL_SIZE    = 256
+  MAX_HEADERS         =   64
+  MAX_ARGS            =   64
+  MAX_COOKIES         =   32
+  BUFFER_POOL_SIZE    =  256
 
   # İstek değerlendirme sonucu
   struct EvaluationResult
@@ -95,7 +95,7 @@ module KemalWAF
     @request_filename : String = ""
     @request_basename : String = ""
     @body : String = ""
-    
+
     @args : Array(String)
     @args_names : Array(String)
     @headers : Array(String)
@@ -190,7 +190,7 @@ module KemalWAF
           while name_end > start_idx && cookie_header[name_end].ascii_whitespace?
             name_end -= 1
           end
-          
+
           if name_end >= start_idx
             @cookie_names << cookie_header[start_idx..name_end]
             @cookie_names_count += 1
@@ -314,7 +314,7 @@ module KemalWAF
 
     def evaluate(request : HTTP::Request, body : String?) : EvaluationResult
       snapshot = @snapshot_pool.acquire
-      
+
       begin
         snapshot.populate(request, body, @body_limit)
         result = evaluate_rules(snapshot)

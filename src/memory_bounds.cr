@@ -14,14 +14,14 @@ module KemalWAF
 
   # Memory limit constants (in bytes)
   module MemoryLimits
-    RATE_LIMITER_BYTES     = 50_i64 * 1024 * 1024  # 50 MB
-    CHALLENGE_CACHE_BYTES  = 20_i64 * 1024 * 1024  # 20 MB
-    RULE_ENGINE_BYTES      =  5_i64 * 1024 * 1024  #  5 MB
-    CONNECTION_POOL_BYTES  = 10_i64 * 1024 * 1024  # 10 MB
-    GEOIP_BYTES            = 80_i64 * 1024 * 1024  # 80 MB
-    
-    TOTAL_WAF_BYTES        = RATE_LIMITER_BYTES + CHALLENGE_CACHE_BYTES + 
-                             RULE_ENGINE_BYTES + CONNECTION_POOL_BYTES + GEOIP_BYTES
+    RATE_LIMITER_BYTES    = 50_i64 * 1024 * 1024 # 50 MB
+    CHALLENGE_CACHE_BYTES = 20_i64 * 1024 * 1024 # 20 MB
+    RULE_ENGINE_BYTES     = 5_i64 * 1024 * 1024  #  5 MB
+    CONNECTION_POOL_BYTES = 10_i64 * 1024 * 1024 # 10 MB
+    GEOIP_BYTES           = 80_i64 * 1024 * 1024 # 80 MB
+
+    TOTAL_WAF_BYTES = RATE_LIMITER_BYTES + CHALLENGE_CACHE_BYTES +
+                      RULE_ENGINE_BYTES + CONNECTION_POOL_BYTES + GEOIP_BYTES
   end
 
   # Module types for memory tracking
@@ -163,19 +163,18 @@ module KemalWAF
       rule_engine: NamedTuple(used: Int64, limit: Int64, percent: Float64),
       connection_pool: NamedTuple(used: Int64, limit: Int64, percent: Float64),
       geoip: NamedTuple(used: Int64, limit: Int64, percent: Float64),
-      total: NamedTuple(used: Int64, limit: Int64, percent: Float64)
-    )
+      total: NamedTuple(used: Int64, limit: Int64, percent: Float64))
       {
-        rate_limiter: module_stats(MemoryModule::RateLimiter),
+        rate_limiter:    module_stats(MemoryModule::RateLimiter),
         challenge_cache: module_stats(MemoryModule::ChallengeCache),
-        rule_engine: module_stats(MemoryModule::RuleEngine),
+        rule_engine:     module_stats(MemoryModule::RuleEngine),
         connection_pool: module_stats(MemoryModule::ConnectionPool),
-        geoip: module_stats(MemoryModule::GeoIP),
-        total: {
-          used: total_usage,
-          limit: MemoryLimits::TOTAL_WAF_BYTES,
-          percent: (total_usage.to_f64 / MemoryLimits::TOTAL_WAF_BYTES.to_f64) * 100.0
-        }
+        geoip:           module_stats(MemoryModule::GeoIP),
+        total:           {
+          used:    total_usage,
+          limit:   MemoryLimits::TOTAL_WAF_BYTES,
+          percent: (total_usage.to_f64 / MemoryLimits::TOTAL_WAF_BYTES.to_f64) * 100.0,
+        },
       }
     end
 
@@ -191,23 +190,23 @@ module KemalWAF
 
     private def get_counter(mod : MemoryModule) : Atomic(Int64)
       case mod
-      when .rate_limiter?     then @rate_limiter_bytes
-      when .challenge_cache?  then @challenge_cache_bytes
-      when .rule_engine?      then @rule_engine_bytes
-      when .connection_pool?  then @connection_pool_bytes
-      when .geo_ip?           then @geoip_bytes
-      else                         @other_bytes
+      when .rate_limiter?    then @rate_limiter_bytes
+      when .challenge_cache? then @challenge_cache_bytes
+      when .rule_engine?     then @rule_engine_bytes
+      when .connection_pool? then @connection_pool_bytes
+      when .geo_ip?          then @geoip_bytes
+      else                        @other_bytes
       end
     end
 
     private def get_limit(mod : MemoryModule) : Int64
       case mod
-      when .rate_limiter?     then MemoryLimits::RATE_LIMITER_BYTES
-      when .challenge_cache?  then MemoryLimits::CHALLENGE_CACHE_BYTES
-      when .rule_engine?      then MemoryLimits::RULE_ENGINE_BYTES
-      when .connection_pool?  then MemoryLimits::CONNECTION_POOL_BYTES
-      when .geo_ip?           then MemoryLimits::GEOIP_BYTES
-      else                         Int64::MAX
+      when .rate_limiter?    then MemoryLimits::RATE_LIMITER_BYTES
+      when .challenge_cache? then MemoryLimits::CHALLENGE_CACHE_BYTES
+      when .rule_engine?     then MemoryLimits::RULE_ENGINE_BYTES
+      when .connection_pool? then MemoryLimits::CONNECTION_POOL_BYTES
+      when .geo_ip?          then MemoryLimits::GEOIP_BYTES
+      else                        Int64::MAX
       end
     end
 
@@ -215,9 +214,9 @@ module KemalWAF
       used = usage(mod)
       lim = get_limit(mod)
       {
-        used: used,
-        limit: lim,
-        percent: lim > 0 ? (used.to_f64 / lim.to_f64) * 100.0 : 0.0
+        used:    used,
+        limit:   lim,
+        percent: lim > 0 ? (used.to_f64 / lim.to_f64) * 100.0 : 0.0,
       }
     end
 
@@ -355,9 +354,9 @@ module KemalWAF
     def stats : NamedTuple(entries: Int32, max_entries: Int32, memory_module: MemoryModule)
       @mutex.synchronize do
         {
-          entries: @storage.size,
-          max_entries: @max_entries,
-          memory_module: @memory_module
+          entries:       @storage.size,
+          max_entries:   @max_entries,
+          memory_module: @memory_module,
         }
       end
     end
@@ -415,7 +414,7 @@ module KemalWAF
     def set(key : K, value : V) : Bool
       @mutex.synchronize do
         is_new = !@storage.has_key?(key)
-        
+
         if is_new
           unless MemoryTracker.instance.allocate(@memory_module, @entry_size_bytes)
             Log.warn { "Memory limit reached, cannot add new entry" }
@@ -472,11 +471,10 @@ module KemalWAF
     end
 
     # Iterate (with lock)
-    def each(&block : K, V -> )
+    def each(&block : K, V ->)
       @mutex.synchronize do
         @storage.each { |k, v| yield k, v }
       end
     end
   end
 end
-

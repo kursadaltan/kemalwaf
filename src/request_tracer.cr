@@ -16,18 +16,18 @@ module KemalWAF
 
   # Trace point indices for array-based storage
   enum TracePoint
-    Start           = 0  # Request received
-    DnsComplete     = 1  # DNS resolution complete
-    LbComplete      = 2  # Load balancer routing complete
-    WafStart        = 3  # WAF evaluation start
-    WafComplete     = 4  # WAF evaluation complete
-    BackendStart    = 5  # Backend request start
-    BackendComplete = 6  # Backend response received
-    ResponseStart   = 7  # Response writing start
-    ResponseComplete = 8 # Response writing complete
-    GcStart         = 9  # GC started (if any)
-    GcComplete      = 10 # GC completed
-    End             = 11 # Request complete
+    Start            =  0 # Request received
+    DnsComplete      =  1 # DNS resolution complete
+    LbComplete       =  2 # Load balancer routing complete
+    WafStart         =  3 # WAF evaluation start
+    WafComplete      =  4 # WAF evaluation complete
+    BackendStart     =  5 # Backend request start
+    BackendComplete  =  6 # Backend response received
+    ResponseStart    =  7 # Response writing start
+    ResponseComplete =  8 # Response writing complete
+    GcStart          =  9 # GC started (if any)
+    GcComplete       = 10 # GC completed
+    End              = 11 # Request complete
   end
 
   TRACE_POINTS_COUNT = 12
@@ -53,7 +53,7 @@ module KemalWAF
       @recorded = StaticArray(Bool, TRACE_POINTS_COUNT).new(false)
       @metadata = {} of String => String
       @created_at = Time.utc
-      
+
       # Record start time immediately
       record(TracePoint::Start)
     end
@@ -164,13 +164,13 @@ module KemalWAF
 
     def to_json_object : Hash(String, String | Float64 | Int64 | Nil)
       {
-        "request_id"          => @request_id,
-        "created_at"          => @created_at.to_rfc3339,
-        "total_duration_ms"   => total_duration_ms,
-        "waf_duration_us"     => waf_duration_us,
-        "backend_duration_ms" => backend_duration_ms,
+        "request_id"           => @request_id,
+        "created_at"           => @created_at.to_rfc3339,
+        "total_duration_ms"    => total_duration_ms,
+        "waf_duration_us"      => waf_duration_us,
+        "backend_duration_ms"  => backend_duration_ms,
         "response_duration_us" => response_duration_us,
-        "gc_duration_ns"      => gc_duration_ns,
+        "gc_duration_ns"       => gc_duration_ns,
       }
     end
 
@@ -178,23 +178,23 @@ module KemalWAF
       parts = [] of String
       parts << %("request_id":"#{@request_id}")
       parts << %("created_at":"#{@created_at.to_rfc3339}")
-      
+
       if total_ms = total_duration_ms
         parts << %("total_duration_ms":#{total_ms.round(3)})
       end
-      
+
       if waf_us = waf_duration_us
         parts << %("waf_duration_us":#{waf_us.round(3)})
       end
-      
+
       if backend_ms = backend_duration_ms
         parts << %("backend_duration_ms":#{backend_ms.round(3)})
       end
-      
+
       if response_us = response_duration_us
         parts << %("response_duration_us":#{response_us.round(3)})
       end
-      
+
       if gc_ns = gc_duration_ns
         parts << %("gc_duration_ns":#{gc_ns})
       end
@@ -209,19 +209,19 @@ module KemalWAF
     # Format for logging
     def to_log_string : String
       parts = ["req_id=#{@request_id}"]
-      
+
       if total_ms = total_duration_ms
         parts << "total=#{total_ms.round(2)}ms"
       end
-      
+
       if waf_us = waf_duration_us
         parts << "waf=#{waf_us.round(2)}µs"
       end
-      
+
       if backend_ms = backend_duration_ms
         parts << "backend=#{backend_ms.round(2)}ms"
       end
-      
+
       if gc_ns = gc_duration_ns
         parts << "gc=#{gc_ns}ns"
       end
@@ -343,10 +343,10 @@ module KemalWAF
       return unless trace
       trace.record(TracePoint::End)
       @traces_completed.add(1_i64)
-      
+
       # Log trace if debug enabled
       Log.debug { trace.to_log_string }
-      
+
       @pool.release(trace)
     end
 
@@ -360,10 +360,10 @@ module KemalWAF
     # Get statistics
     def stats : NamedTuple(enabled: Bool, sample_rate: Float64, created: Int64, completed: Int64)
       {
-        enabled: @enabled,
+        enabled:     @enabled,
         sample_rate: @sample_rate,
-        created: @traces_created.get,
-        completed: @traces_completed.get
+        created:     @traces_created.get,
+        completed:   @traces_completed.get,
       }
     end
   end
@@ -386,7 +386,7 @@ module KemalWAF
       RequestTracer.instance.complete_trace(trace)
     end
 
-    def self.with_trace(request_id : String? = nil, &block : RequestTrace? -> )
+    def self.with_trace(request_id : String? = nil, &block : RequestTrace? ->)
       trace = start(request_id)
       begin
         yield trace
@@ -396,4 +396,3 @@ module KemalWAF
     end
   end
 end
-
