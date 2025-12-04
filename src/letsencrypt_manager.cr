@@ -357,4 +357,3 @@ module KemalWAF
     end
   end
 end
-

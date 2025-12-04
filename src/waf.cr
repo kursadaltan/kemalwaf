@@ -67,7 +67,7 @@ module KemalWAF
   # Server configuration (HTTP/HTTPS)
   HTTP_ENABLED  = ENV.fetch("HTTP_ENABLED", "true") == "true"
   HTTPS_ENABLED = ENV.fetch("HTTPS_ENABLED", "false") == "true"
-  HTTP_PORT      = ENV.fetch("HTTP_PORT", "3030").to_i
+  HTTP_PORT     = ENV.fetch("HTTP_PORT", "3030").to_i
   HTTPS_PORT    = ENV.fetch("HTTPS_PORT", "3443").to_i
 
   # TLS configuration
@@ -121,7 +121,7 @@ module KemalWAF
   EFFECTIVE_OBSERVE_MODE = get_config_value("OBSERVE", OBSERVE_MODE ? "true" : "false") == "true"
 
   # Server configuration (from config file or env)
-  EFFECTIVE_HTTP_ENABLED  = begin
+  EFFECTIVE_HTTP_ENABLED = begin
     if config = @@config_loader.try(&.get_config)
       server_config = config.try(&.server)
       server_config ? server_config.http_enabled : HTTP_ENABLED

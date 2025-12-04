@@ -12,8 +12,8 @@ module KemalWAF
     property verify_ssl : Bool = true # SSL sertifika doğrulaması (default: true)
 
     # Domain bazlı TLS/SSL sertifika yapılandırması (SNI desteği için)
-    property cert_file : String? = nil         # Domain için özel sertifika dosyası
-    property key_file : String? = nil          # Domain için özel private key dosyası
+    property cert_file : String? = nil          # Domain için özel sertifika dosyası
+    property key_file : String? = nil           # Domain için özel private key dosyası
     property letsencrypt_enabled : Bool = false # Bu domain için Let's Encrypt otomatik sertifika
     property letsencrypt_email : String? = nil  # Let's Encrypt için e-posta adresi
 
@@ -25,7 +25,7 @@ module KemalWAF
       @cert_file : String? = nil,
       @key_file : String? = nil,
       @letsencrypt_enabled : Bool = false,
-      @letsencrypt_email : String? = nil
+      @letsencrypt_email : String? = nil,
     )
     end
 

@@ -198,7 +198,7 @@ module KemalWAF
       key_file : String? = nil,
       auto_generate : Bool = false,
       auto_cert_dir : String = "config/certs",
-      tls_ciphers : String? = nil
+      tls_ciphers : String? = nil,
     )
       @cert_file = cert_file
       @key_file = key_file
@@ -277,7 +277,7 @@ module KemalWAF
       # OpenSSL komut satırı aracını kullanarak self-signed sertifika oluştur
       # Bu yöntem Crystal'ın OpenSSL binding API'sinden daha güvenilir
       openssl_cmd = "openssl"
-      
+
       # OpenSSL'in mevcut olup olmadığını kontrol et
       unless Process.find_executable(openssl_cmd)
         Log.error { "OpenSSL command not found. Cannot generate self-signed certificate." }
@@ -289,9 +289,9 @@ module KemalWAF
         openssl_cmd,
         "genrsa",
         "-out", key_path,
-        "2048"
+        "2048",
       ]
-      
+
       error_io = IO::Memory.new
       result = Process.run(key_gen_cmd[0], key_gen_cmd[1..], output: Process::Redirect::Close, error: error_io)
       unless result.success?
@@ -310,9 +310,9 @@ module KemalWAF
         "-out", cert_path,
         "-days", "365",
         "-subj", "/C=TR/ST=Istanbul/L=Istanbul/O=Kemal WAF/CN=localhost",
-        "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1"
+        "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1",
       ]
-      
+
       error_io = IO::Memory.new
       result = Process.run(cert_gen_cmd[0], cert_gen_cmd[1..], output: Process::Redirect::Close, error: error_io)
       unless result.success?
@@ -338,7 +338,7 @@ module KemalWAF
         # Dosyaların okunabilir olduğunu kontrol et
         cert_size = File.size(cert_path)
         key_size = File.size(key_path)
-        
+
         # Minimum dosya boyutu kontrolü (sertifika ve key dosyaları boş olmamalı)
         if cert_size == 0 || key_size == 0
           Log.warn { "Certificate or key file is empty" }
@@ -353,4 +353,3 @@ module KemalWAF
     end
   end
 end
-
