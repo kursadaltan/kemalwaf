@@ -27,3 +27,4 @@ module WAFHelpers
     host.split(':')[0].strip.downcase
   end
 end
+

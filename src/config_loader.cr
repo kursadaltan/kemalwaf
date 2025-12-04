@@ -11,7 +11,32 @@ module KemalWAF
     property preserve_original_host : Bool = false
     property verify_ssl : Bool = true # SSL sertifika doğrulaması (default: true)
 
-    def initialize(@default_upstream : String, @upstream_host_header : String = "", @preserve_original_host : Bool = false, @verify_ssl : Bool = true)
+    # Domain bazlı TLS/SSL sertifika yapılandırması (SNI desteği için)
+    property cert_file : String? = nil         # Domain için özel sertifika dosyası
+    property key_file : String? = nil          # Domain için özel private key dosyası
+    property letsencrypt_enabled : Bool = false # Bu domain için Let's Encrypt otomatik sertifika
+    property letsencrypt_email : String? = nil  # Let's Encrypt için e-posta adresi
+
+    def initialize(
+      @default_upstream : String,
+      @upstream_host_header : String = "",
+      @preserve_original_host : Bool = false,
+      @verify_ssl : Bool = true,
+      @cert_file : String? = nil,
+      @key_file : String? = nil,
+      @letsencrypt_enabled : Bool = false,
+      @letsencrypt_email : String? = nil
+    )
+    end
+
+    # Domain için sertifika yapılandırması var mı?
+    def has_custom_cert? : Bool
+      !@cert_file.nil? && !@key_file.nil?
+    end
+
+    # Domain için Let's Encrypt aktif mi?
+    def use_letsencrypt? : Bool
+      @letsencrypt_enabled && !has_custom_cert?
     end
   end
 
@@ -29,6 +54,7 @@ module KemalWAF
     property logging : LoggingConfig? = nil
     property metrics : MetricsConfig? = nil
     property connection_pooling : ConnectionPoolingConfig? = nil
+    property server : ServerConfig? = nil
 
     def initialize
     end
@@ -118,6 +144,27 @@ module KemalWAF
       config.health_check = true
       config
     end
+  end
+
+  struct TLSConfig
+    include YAML::Serializable
+
+    property cert_file : String? = nil
+    property key_file : String? = nil
+    property auto_generate : Bool = false
+    property auto_cert_dir : String = "config/certs"
+    property tls_ciphers : String? = nil
+  end
+
+  struct ServerConfig
+    include YAML::Serializable
+
+    property http_enabled : Bool = true
+    property https_enabled : Bool = false
+    property http_port : Int32 = 3030
+    property https_port : Int32 = 3443
+    property tls : TLSConfig? = nil
+    property http2_enabled : Bool = false
   end
 
   # Yapılandırma yükleyici ve yöneticisi

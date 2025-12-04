@@ -15,6 +15,8 @@ require "./config_loader"
 require "./connection_pool_manager"
 require "./waf_renderer"
 require "./waf_helpers"
+require "./tls_manager"
+require "./letsencrypt_manager"
 
 # Constants
 DEFAULT_RETRY_COUNT = 3
@@ -62,9 +64,21 @@ module KemalWAF
   # Config file path
   CONFIG_FILE = ENV.fetch("WAF_CONFIG_FILE", "config/waf.yml")
 
+  # Server configuration (HTTP/HTTPS)
+  HTTP_ENABLED  = ENV.fetch("HTTP_ENABLED", "true") == "true"
+  HTTPS_ENABLED = ENV.fetch("HTTPS_ENABLED", "false") == "true"
+  HTTP_PORT      = ENV.fetch("HTTP_PORT", "3030").to_i
+  HTTPS_PORT    = ENV.fetch("HTTPS_PORT", "3443").to_i
+
+  # TLS configuration
+  TLS_CERT_FILE     = ENV.fetch("TLS_CERT_FILE", "")
+  TLS_KEY_FILE      = ENV.fetch("TLS_KEY_FILE", "")
+  TLS_AUTO_GENERATE = ENV.fetch("TLS_AUTO_GENERATE", "false") == "true"
+
   # Config loader (optional, used if config file exists)
   @@config_loader : ConfigLoader? = nil
   @@pool_manager : ConnectionPoolManager? = nil
+  @@tls_manager : TLSManager? = nil
   begin
     if File.exists?(CONFIG_FILE)
       @@config_loader = ConfigLoader.new(CONFIG_FILE)
@@ -106,6 +120,43 @@ module KemalWAF
   EFFECTIVE_LOG_DIR      = get_config_value("LOG_DIR", LOG_DIR)
   EFFECTIVE_OBSERVE_MODE = get_config_value("OBSERVE", OBSERVE_MODE ? "true" : "false") == "true"
 
+  # Server configuration (from config file or env)
+  EFFECTIVE_HTTP_ENABLED  = begin
+    if config = @@config_loader.try(&.get_config)
+      server_config = config.try(&.server)
+      server_config ? server_config.http_enabled : HTTP_ENABLED
+    else
+      HTTP_ENABLED
+    end
+  end
+
+  EFFECTIVE_HTTPS_ENABLED = begin
+    if config = @@config_loader.try(&.get_config)
+      server_config = config.try(&.server)
+      server_config ? server_config.https_enabled : HTTPS_ENABLED
+    else
+      HTTPS_ENABLED
+    end
+  end
+
+  EFFECTIVE_HTTP_PORT = begin
+    if config = @@config_loader.try(&.get_config)
+      server_config = config.try(&.server)
+      server_config ? server_config.http_port : HTTP_PORT
+    else
+      HTTP_PORT
+    end
+  end
+
+  EFFECTIVE_HTTPS_PORT = begin
+    if config = @@config_loader.try(&.get_config)
+      server_config = config.try(&.server)
+      server_config ? server_config.https_port : HTTPS_PORT
+    else
+      HTTPS_PORT
+    end
+  end
+
   # Global components
   @@rule_loader = RuleLoader.new(EFFECTIVE_RULE_DIR)
   @@evaluator = Evaluator.new(@@rule_loader, EFFECTIVE_OBSERVE_MODE, BODY_LIMIT)
@@ -134,6 +185,66 @@ module KemalWAF
       end
     end
     ProxyClient.new(EFFECTIVE_UPSTREAM, UPSTREAM_HOST_HEADER, PRESERVE_ORIGINAL_HOST, @@pool_manager, retry_count)
+  end
+
+  # Initialize Let's Encrypt Manager
+  @@letsencrypt_manager : LetsEncryptManager? = begin
+    if EFFECTIVE_HTTPS_ENABLED
+      letsencrypt_staging = ENV.fetch("LETSENCRYPT_STAGING", "false") == "true"
+      LetsEncryptManager.new(
+        cert_dir: "config/certs/letsencrypt",
+        use_staging: letsencrypt_staging
+      )
+    else
+      nil
+    end
+  end
+
+  # Initialize SNI Manager
+  @@sni_manager : SNIManager? = begin
+    if EFFECTIVE_HTTPS_ENABLED
+      sni_manager = SNIManager.new("config/certs")
+
+      # Domain sertifikalarını yükle
+      if config_loader = @@config_loader
+        config = config_loader.get_config
+        if config
+          sni_manager.load_from_domain_configs(config.domains, @@letsencrypt_manager)
+        end
+      end
+
+      sni_manager
+    else
+      nil
+    end
+  end
+
+  # Initialize TLS Manager
+  @@tls_manager = begin
+    if EFFECTIVE_HTTPS_ENABLED
+      tls_config = nil
+      if config_loader = @@config_loader
+        config = config_loader.get_config
+        server_config = config.try(&.server)
+        tls_config = server_config.try(&.tls) if server_config
+      end
+
+      cert_file = tls_config ? tls_config.cert_file : (TLS_CERT_FILE.empty? ? nil : TLS_CERT_FILE)
+      key_file = tls_config ? tls_config.key_file : (TLS_KEY_FILE.empty? ? nil : TLS_KEY_FILE)
+      auto_generate = tls_config ? tls_config.auto_generate : TLS_AUTO_GENERATE
+      auto_cert_dir = tls_config ? tls_config.auto_cert_dir : "config/certs"
+      tls_ciphers = tls_config ? tls_config.tls_ciphers : nil
+
+      TLSManager.new(
+        cert_file: cert_file,
+        key_file: key_file,
+        auto_generate: auto_generate,
+        auto_cert_dir: auto_cert_dir,
+        tls_ciphers: tls_ciphers
+      )
+    else
+      nil
+    end
   end
   @@metrics = Metrics.new
   @@rate_limiter = RATE_LIMIT_ENABLED ? RateLimiter.new(
@@ -207,10 +318,14 @@ module KemalWAF
       old_rate_limit = old_config.rate_limiting
       new_rate_limit = new_config.rate_limiting
       rate_limit_changed = config_section_changed?(old_rate_limit, new_rate_limit) do
-        old_rate_limit.enabled != new_rate_limit.enabled ||
-          old_rate_limit.default_limit != new_rate_limit.default_limit ||
-          old_rate_limit.window != new_rate_limit.window ||
-          old_rate_limit.block_duration != new_rate_limit.block_duration
+        if old_rate_limit && new_rate_limit
+          old_rate_limit.enabled != new_rate_limit.enabled ||
+            old_rate_limit.default_limit != new_rate_limit.default_limit ||
+            old_rate_limit.window != new_rate_limit.window ||
+            old_rate_limit.block_duration != new_rate_limit.block_duration
+        else
+          false
+        end
       end
       if rate_limit_changed
         if new_rate_limit && new_rate_limit.enabled
@@ -231,9 +346,13 @@ module KemalWAF
       old_ip_filter = old_config.ip_filtering
       new_ip_filter = new_config.ip_filtering
       ip_filter_changed = config_section_changed?(old_ip_filter, new_ip_filter) do
-        old_ip_filter.enabled != new_ip_filter.enabled ||
-          old_ip_filter.whitelist_file != new_ip_filter.whitelist_file ||
-          old_ip_filter.blacklist_file != new_ip_filter.blacklist_file
+        if old_ip_filter && new_ip_filter
+          old_ip_filter.enabled != new_ip_filter.enabled ||
+            old_ip_filter.whitelist_file != new_ip_filter.whitelist_file ||
+            old_ip_filter.blacklist_file != new_ip_filter.blacklist_file
+        else
+          false
+        end
       end
       if ip_filter_changed
         if new_ip_filter && new_ip_filter.enabled
@@ -261,10 +380,14 @@ module KemalWAF
       old_geoip_config = old_config.geoip
       new_geoip_config = new_config.geoip
       geoip_config_changed = config_section_changed?(old_geoip_config, new_geoip_config) do
-        old_geoip_config.enabled != new_geoip_config.enabled ||
-          old_geoip_config.mmdb_file != new_geoip_config.mmdb_file ||
-          old_geoip_config.blocked_countries != new_geoip_config.blocked_countries ||
-          old_geoip_config.allowed_countries != new_geoip_config.allowed_countries
+        if old_geoip_config && new_geoip_config
+          old_geoip_config.enabled != new_geoip_config.enabled ||
+            old_geoip_config.mmdb_file != new_geoip_config.mmdb_file ||
+            old_geoip_config.blocked_countries != new_geoip_config.blocked_countries ||
+            old_geoip_config.allowed_countries != new_geoip_config.allowed_countries
+        else
+          false
+        end
       end
       if geoip_config_changed
         if new_geoip_config && new_geoip_config.enabled
@@ -348,6 +471,51 @@ module KemalWAF
     end
   end
 
+  # Start certificate renewal fiber (Let's Encrypt auto-renewal)
+  spawn do
+    # İlk kontrolü 1 saat sonra yap
+    sleep 1.hour
+
+    loop do
+      begin
+        if letsencrypt_manager = @@letsencrypt_manager
+          if sni_manager = @@sni_manager
+            if config_loader = @@config_loader
+              config = config_loader.get_config
+              if config
+                # Yenileme gereken sertifikaları kontrol et
+                config.domains.each do |domain, domain_config|
+                  if domain_config.use_letsencrypt?
+                    if letsencrypt_manager.needs_renewal?(domain, 30)
+                      Log.info { "Certificate renewal needed for '#{domain}'" }
+                      if letsencrypt_manager.renew_certificate(domain, domain_config.letsencrypt_email)
+                        # Sertifika yenilendi, SNI manager'ı güncelle
+                        cert_path = letsencrypt_manager.get_cert_path(domain)
+                        key_path = letsencrypt_manager.get_key_path(domain)
+                        if File.exists?(cert_path) && File.exists?(key_path)
+                          sni_manager.add_domain_certificate(domain, cert_path, key_path, true)
+                          Log.info { "Certificate renewed and reloaded for '#{domain}'" }
+                        end
+                      else
+                        Log.error { "Failed to renew certificate for '#{domain}'" }
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      rescue ex
+        Log.error { "Certificate renewal error: #{ex.message}" }
+        @@structured_logger.log_error(ex, {"context" => "cert_renewal"})
+      end
+
+      # Her 12 saatte bir kontrol et
+      sleep 12.hours
+    end
+  end
+
   # Graceful shutdown handler
   Signal::INT.trap do
     Log.info { "SIGINT received, starting graceful shutdown..." }
@@ -404,6 +572,49 @@ module KemalWAF
     Log.info { "GeoIP Stats: Blocked Countries=#{geoip_stats["blocked_countries"]}, Allowed Countries=#{geoip_stats["allowed_countries"]}, Cache Size=#{geoip_stats["cache_size"]}" }
   end
 
+  # Server configuration logging
+  Log.info { "HTTP_ENABLED: #{EFFECTIVE_HTTP_ENABLED}" }
+  Log.info { "HTTPS_ENABLED: #{EFFECTIVE_HTTPS_ENABLED}" }
+  if EFFECTIVE_HTTP_ENABLED
+    Log.info { "HTTP_PORT: #{EFFECTIVE_HTTP_PORT}" }
+  end
+  if EFFECTIVE_HTTPS_ENABLED
+    Log.info { "HTTPS_PORT: #{EFFECTIVE_HTTPS_PORT}" }
+
+    # SNI Manager logging
+    if sni_manager = @@sni_manager
+      domain_certs = sni_manager.list_domains
+      if domain_certs.size > 0
+        Log.info { "SNI: #{domain_certs.size} domain certificate(s) loaded" }
+        domain_certs.each do |domain|
+          Log.info { "  - #{domain}" }
+        end
+      end
+    end
+
+    # Let's Encrypt Manager logging
+    if le_manager = @@letsencrypt_manager
+      staging_mode = le_manager.staging? ? " (STAGING)" : ""
+      Log.info { "Let's Encrypt: Enabled#{staging_mode}" }
+    end
+
+    # TLS Manager logging
+    if tls_manager = @@tls_manager
+      tls_config = @@config_loader.try(&.get_config).try(&.server).try(&.tls)
+      if tls_config
+        if tls_config.auto_generate
+          Log.info { "TLS: Auto-generating self-signed certificate (fallback)" }
+        elsif tls_config.cert_file && tls_config.key_file
+          Log.info { "TLS: Using default certificate files - cert=#{tls_config.cert_file}, key=#{tls_config.key_file}" }
+        end
+      elsif TLS_AUTO_GENERATE
+        Log.info { "TLS: Auto-generating self-signed certificate (from env)" }
+      elsif !TLS_CERT_FILE.empty? && !TLS_KEY_FILE.empty?
+        Log.info { "TLS: Using certificate files (from env) - cert=#{TLS_CERT_FILE}, key=#{TLS_KEY_FILE}" }
+      end
+    end
+  end
+
   # Getter metodları
   def self.metrics : Metrics
     @@metrics
@@ -449,6 +660,18 @@ module KemalWAF
     @@pool_manager
   end
 
+  def self.tls_manager : TLSManager?
+    @@tls_manager
+  end
+
+  def self.sni_manager : SNIManager?
+    @@sni_manager
+  end
+
+  def self.letsencrypt_manager : LetsEncryptManager?
+    @@letsencrypt_manager
+  end
+
   def self.shutdown
     Log.info { "Shutting down WAF..." }
     @@pool_manager.try(&.shutdown_all)
@@ -474,11 +697,37 @@ get "/health" do |env|
   }.to_json
 end
 
+# ACME Challenge endpoint for Let's Encrypt HTTP-01 validation
+# This endpoint is bypassed from WAF rules
+get "/.well-known/acme-challenge/:token" do |env|
+  token = env.params.url["token"]
+  KemalWAF::Log.debug { "ACME challenge request for token: #{token}" }
+
+  # Let's Encrypt manager'dan challenge içeriğini al
+  if letsencrypt_manager = KemalWAF.letsencrypt_manager
+    if content = letsencrypt_manager.read_challenge_file(token)
+      env.response.content_type = "text/plain"
+      content
+    else
+      KemalWAF::Log.warn { "ACME challenge token not found: #{token}" }
+      env.response.status_code = 404
+      env.response.content_type = "text/plain"
+      "Token not found"
+    end
+  else
+    KemalWAF::Log.warn { "Let's Encrypt manager not initialized" }
+    env.response.status_code = 503
+    env.response.content_type = "text/plain"
+    "Let's Encrypt not configured"
+  end
+end
+
 # Pass all other requests through WAF
 before_all do |env|
-  # Skip metrics and health endpoints
+  # Skip metrics, health and ACME challenge endpoints
   next if env.request.path == "/metrics"
   next if env.request.path == "/health"
+  next if env.request.path.starts_with?("/.well-known/acme-challenge/")
 
   # Create request ID
   request_id = UUID.random.to_s
@@ -879,6 +1128,37 @@ end
 options "/*" do |env|
   proxy_request(env)
 end
-Kemal.config.port = 3030
+
+# Configure Kemal server
+if KemalWAF::EFFECTIVE_HTTP_ENABLED && KemalWAF::EFFECTIVE_HTTPS_ENABLED
+  # Both HTTP and HTTPS enabled - HTTP will be on default port
+  Kemal.config.port = KemalWAF::EFFECTIVE_HTTP_PORT
+  KemalWAF::Log.info { "WAF will listen on HTTP port #{KemalWAF::EFFECTIVE_HTTP_PORT} and HTTPS port #{KemalWAF::EFFECTIVE_HTTPS_PORT}" }
+elsif KemalWAF::EFFECTIVE_HTTPS_ENABLED
+  # Only HTTPS enabled
+  Kemal.config.port = KemalWAF::EFFECTIVE_HTTPS_PORT
+  KemalWAF::Log.info { "WAF will listen on HTTPS port #{KemalWAF::EFFECTIVE_HTTPS_PORT}" }
+else
+  # Only HTTP enabled (default)
+  Kemal.config.port = KemalWAF::EFFECTIVE_HTTP_PORT
+  KemalWAF::Log.info { "WAF will listen on HTTP port #{KemalWAF::EFFECTIVE_HTTP_PORT}" }
+end
+
+# Configure TLS if HTTPS is enabled
+if KemalWAF::EFFECTIVE_HTTPS_ENABLED
+  if tls_manager = KemalWAF.tls_manager
+    tls_context = tls_manager.get_tls_context
+    if tls_context
+      Kemal.config.ssl = tls_context
+      KemalWAF::Log.info { "TLS/SSL configured successfully" }
+    else
+      KemalWAF::Log.error { "Failed to configure TLS/SSL. HTTPS will not be available." }
+      exit 1
+    end
+  else
+    KemalWAF::Log.error { "TLS Manager not initialized. HTTPS will not be available." }
+    exit 1
+  end
+end
 
 Kemal.run

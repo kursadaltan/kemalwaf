@@ -12,19 +12,35 @@ waf:
     timeout: 30s
     retry: 3
     
-  # Multi-domain configuration
-  # Exact match is performed for each domain (subdomains must be defined separately)
+  # Multi-domain configuration with SNI (Server Name Indication) support
+  # Each domain can have its own TLS certificate
+  # Priority: custom cert_file/key_file > letsencrypt_enabled > global TLS config
   domains:
+    # Example 1: Domain with custom certificate files
     "example.com":
       default_upstream: "http://localhost:8080"
-      upstream_host_header: "example.com"  # If empty, taken from upstream URI
+      upstream_host_header: "example.com"
       preserve_original_host: true
+      # Custom TLS certificate for this domain (SNI)
+      # cert_file: /etc/letsencrypt/live/example.com/fullchain.pem
+      # key_file: /etc/letsencrypt/live/example.com/privkey.pem
 
+    # Example 2: Domain with Let's Encrypt auto-certificate
     "api.example.com":
       default_upstream: "http://localhost:8081"
       upstream_host_header: "api.example.com"
       preserve_original_host: true
-      verify_ssl: false  # Skip SSL certificate verification (for self-signed or internal certificates)
+      verify_ssl: false  # Skip SSL verification for upstream
+      # Let's Encrypt automatic certificate (HTTP-01 challenge)
+      letsencrypt_enabled: true
+      letsencrypt_email: admin@example.com
+
+    # Example 3: Subdomain with custom certificate
+    "www.example.com":
+      default_upstream: "http://localhost:8080"
+      preserve_original_host: true
+      # cert_file: /path/to/www.example.com/cert.pem
+      # key_file: /path/to/www.example.com/key.pem
       
   # Rate limiting configuration
   rate_limiting:
@@ -78,3 +94,24 @@ waf:
     max_size: 100          # Max pool size
     idle_timeout: 300s    # Idle connection timeout
     health_check: true    # Connection health check
+    
+  # Server configuration (HTTP/HTTPS)
+  server:
+    http_enabled: true    # Enable HTTP server (default: true)
+    https_enabled: false  # Enable HTTPS server (default: false)
+    http_port: 3030       # HTTP port (default: 3030)
+    https_port: 3443      # HTTPS port (default: 3443)
+    http2_enabled: false  # HTTP/2.0 support (default: false, not yet implemented)
+    
+    # TLS/SSL configuration (required if https_enabled: true)
+    tls:
+      # Option 1: Use certificate files
+      # cert_file: /path/to/cert.pem
+      # key_file: /path/to/key.pem
+      
+      # Option 2: Auto-generate self-signed certificate (for testing/development only)
+      auto_generate: false        # Auto-generate self-signed certificate (default: false)
+      auto_cert_dir: config/certs # Directory for auto-generated certificates (default: config/certs)
+      
+      # TLS settings
+      # tls_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"  # Optional: Custom cipher suite
