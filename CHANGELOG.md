@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2025-12-05
+
+### Added
+
+#### Performance Architecture
+- **Zero GC Hotpath**: Request evaluation now uses preallocated buffer pools
+  - `VariableSnapshot` class for stack-based variable storage
+  - `VariableSnapshotPool` with 256 preallocated buffers
+  - Zero-allocation cookie parsing using index-based iteration
+  - Eliminates heap allocations in request hotpath
+
+- **Branchless Evaluation**: Jump-table based operator dispatch
+  - `OperatorDispatch` module with compile-time operator mapping
+  - `@[AlwaysInline]` optimizations for matching functions
+  - New operators: `ends_with`, `equals`
+  - Reduced CPU branch mispredictions
+
+#### Memory Management
+- **Memory Bounds System**: Module-level memory limits with graceful degradation
+  - Rate limiter: 50 MB limit
+  - Challenge cache: 20 MB limit
+  - Rule engine: 5 MB limit
+  - Connection pool: 10 MB limit
+  - GeoIP/MMDB: 80 MB limit
+  - `BoundedCache` with LRU eviction
+  - `BoundedMap` with memory tracking
+  - Automatic eviction when limits exceeded
+
+#### Rule Engine
+- **Immutable Rule Snapshots**: Thread-safe rule management
+  - `RuleSnapshot` immutable class for rule storage
+  - `AtomicSnapshotHolder` for atomic pointer swap
+  - Version tracking for snapshot identification
+  - Dry-run validation before activation
+  - Zero-downtime configuration updates
+
+#### Observability
+- **Request Tracing**: Granular latency breakdown
+  - 12 trace points (Start, DNS, LB, WAF, Backend, Response, GC, End)
+  - `RequestTracePool` for zero-allocation tracing
+  - Nanosecond precision timestamps
+  - JSON and log format output
+  - Configurable sample rate
+
+- **Extended Prometheus Metrics**: 25 fixed metrics
+  - Request metrics: `duration_seconds` histogram, `size_bytes`
+  - Backend metrics: `latency_seconds` histogram, `errors_total`, `retries_total`
+  - Rate limit metrics: `active_counters`, `blocked_ips`
+  - Connection pool metrics: `size`, `available`, `acquired`, `timeouts`
+  - Memory metrics: `usage_bytes`, `gc_runs`, `gc_duration_seconds`
+  - Rule engine metrics: `evaluation_duration_seconds`, `snapshot_version`
+  - System metrics: `uptime_seconds`, `fiber_crashes`, `config_reloads`
+
+#### Reliability
+- **Panic Isolation**: Fiber crash recovery mechanism
+  - `PanicIsolator` class for isolated fiber execution
+  - Automatic restart on crash with configurable delay
+  - Exponential backoff retry support
+  - Crash statistics and monitoring
+  - `Isolated.spawn` helper for easy usage
+
+### Changed
+
+#### Rate Limiter
+- **Sharded State Map**: Reduced lock contention
+  - 64 shards for concurrent access
+  - Per-shard mutex instead of global lock
+  - O(1) shard lookup using hash-based distribution
+  - Eviction with 2ms time budget
+
+#### IP Filter
+- **Radix Tree Index**: O(1) CIDR lookup for IPv4
+  - `IPv4RadixTree` with 32-level binary tree
+  - O(32) = O(1) constant time lookup
+  - Set-based exact IP matching O(1)
+  - IPv6 fallback with linear scan
+
+### New Files
+- `src/memory_bounds.cr` - Memory limits and bounded containers
+- `src/request_tracer.cr` - Request tracing with latency breakdown
+- `src/panic_isolator.cr` - Fiber crash recovery and isolation
+
+### Improved
+- Evaluator refactored for zero-allocation evaluation
+- Rate limiter simplified with sharded sliding window
+- Rule loader now uses atomic snapshot swapping
+- Metrics expanded from 5 to 25 Prometheus metrics
+- IP filter CIDR lookup improved from O(n) to O(1)
+
+### Technical Details
+
+#### Memory Allocation Reduction
+- Request evaluation: ~0 allocations per request (steady state)
+- Cookie parsing: Zero-allocation using slice operations
+- Variable snapshot: Reused from preallocated pool
+
+#### Lock Contention Reduction
+- Rate limiter: 64x reduction via sharding
+- Rule engine: Lock-free reads via atomic snapshot
+- IP filter: O(1) lookup eliminates iteration
+
+#### Latency Improvements
+- WAF evaluation: Predictable sub-microsecond latency
+- Rate limiting: Consistent O(1) check time
+- CIDR matching: 32-bit comparison instead of N comparisons
+
 ## [1.1.0] - 2025-12-04
 
 ### Added
@@ -154,6 +260,7 @@ waf:
 - Contributing guidelines
 - Architecture documentation
 
-[Unreleased]: https://github.com/kursadaltan/kemalwaf/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/kursadaltan/kemalwaf/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/kursadaltan/kemalwaf/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/kursadaltan/kemalwaf/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/kursadaltan/kemalwaf/releases/tag/v1.0.0
