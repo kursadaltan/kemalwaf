@@ -6,14 +6,13 @@ module KemalWAF
   # LOCK-FREE RATE LIMITER IMPLEMENTATION
   # =============================================================================
   # High-performance rate limiting using:
-  # - Atomic counters (no mutex in hotpath)
-  # - Ring-buffer sliding window (8 slots)
   # - Sharded state map (reduced lock contention)
-  # - Lock-free counter eviction
+  # - Per-shard mutex (fine-grained locking)
+  # - Sliding window algorithm
+  # - Lock-free cleanup eviction
   # =============================================================================
 
   # Constants
-  RING_BUFFER_SLOTS             = 8
   SHARD_COUNT                   = 64
   DEFAULT_CLEANUP_INTERVAL_SEC  = 300 # 5 minutes
   DEFAULT_CLEANUP_MAX_AGE_MULTIPLIER = 2
@@ -52,161 +51,115 @@ module KemalWAF
   end
 
   # =============================================================================
-  # Lock-Free Sliding Window Counter
+  # Sliding Window Counter (Simple, Correct Implementation)
   # =============================================================================
-  # Uses atomic operations for thread-safe counting without locks
-  # Ring buffer with 8 slots for fine-grained time windows
+  # Uses array of timestamps for accurate sliding window
   # =============================================================================
   class SlidingWindowCounter
-    # Ring buffer slots - each slot holds count for a time segment
-    @slots : StaticArray(Atomic(Int64), RING_BUFFER_SLOTS)
-    # Timestamps for each slot (in seconds since epoch)
-    @slot_timestamps : StaticArray(Atomic(Int64), RING_BUFFER_SLOTS)
-    # Block status
-    @blocked_until : Atomic(Int64) # Unix timestamp, 0 if not blocked
-    # Configuration
+    @requests : Array(Time)
+    @blocked_until : Time?
     @limit : Int32
     @window_sec : Int32
-    @slot_duration_sec : Int32
+    @mutex : Mutex
 
     def initialize(@limit : Int32, @window_sec : Int32)
-      @slot_duration_sec = @window_sec // RING_BUFFER_SLOTS
-      @slot_duration_sec = 1 if @slot_duration_sec < 1
-
-      # Initialize slots
-      @slots = StaticArray(Atomic(Int64), RING_BUFFER_SLOTS).new { Atomic(Int64).new(0_i64) }
-      @slot_timestamps = StaticArray(Atomic(Int64), RING_BUFFER_SLOTS).new { Atomic(Int64).new(0_i64) }
-      @blocked_until = Atomic(Int64).new(0_i64)
+      @requests = [] of Time
+      @blocked_until = nil
+      @mutex = Mutex.new
     end
 
-    # Check rate limit (lock-free)
+    # Check rate limit
     def check(now : Time) : RateLimitResult
-      now_unix = now.to_unix
-
-      # Check if blocked
-      blocked = @blocked_until.get
-      if blocked > 0 && now_unix < blocked
-        return RateLimitResult.new(
-          allowed: false,
-          limit: @limit,
-          remaining: 0,
-          reset_at: Time.unix(blocked),
-          blocked_until: Time.unix(blocked)
-        )
-      elsif blocked > 0 && now_unix >= blocked
-        # Block expired, reset
-        @blocked_until.compare_and_set(blocked, 0_i64)
-        clear_all_slots
-      end
-
-      # Calculate current slot index
-      slot_idx = (now_unix // @slot_duration_sec) % RING_BUFFER_SLOTS
-
-      # Get current slot timestamp
-      slot_ts = @slot_timestamps[slot_idx].get
-
-      # If slot is from a different time period, reset it
-      expected_ts = (now_unix // @slot_duration_sec) * @slot_duration_sec
-      if slot_ts != expected_ts
-        # Try to claim this slot for current time period
-        if @slot_timestamps[slot_idx].compare_and_set(slot_ts, expected_ts)
-          @slots[slot_idx].set(0_i64)
+      @mutex.synchronize do
+        # Check if blocked
+        if blocked = @blocked_until
+          if now < blocked
+            return RateLimitResult.new(
+              allowed: false,
+              limit: @limit,
+              remaining: 0,
+              reset_at: blocked,
+              blocked_until: blocked
+            )
+          else
+            # Block expired, reset
+            @blocked_until = nil
+            @requests.clear
+          end
         end
-      end
 
-      # Count requests in all valid slots (within window)
-      total_count = count_requests_in_window(now_unix)
+        # Clean old requests (outside window)
+        window_start = now - @window_sec.seconds
+        @requests.reject! { |req_time| req_time < window_start }
 
-      if total_count >= @limit
-        # Calculate reset time (oldest slot + window)
-        oldest_ts = find_oldest_valid_slot_timestamp(now_unix)
-        reset_at = Time.unix(oldest_ts + @window_sec)
+        # Check limit
+        if @requests.size >= @limit
+          # Calculate reset time
+          oldest_request = @requests.first?
+          reset_at = oldest_request ? oldest_request + @window_sec.seconds : now + @window_sec.seconds
 
-        return RateLimitResult.new(
-          allowed: false,
+          return RateLimitResult.new(
+            allowed: false,
+            limit: @limit,
+            remaining: 0,
+            reset_at: reset_at,
+            blocked_until: nil
+          )
+        end
+
+        # Add request
+        @requests << now
+
+        # Calculate remaining and reset time
+        oldest_request = @requests.first?
+        reset_at = oldest_request ? oldest_request + @window_sec.seconds : now + @window_sec.seconds
+
+        RateLimitResult.new(
+          allowed: true,
           limit: @limit,
-          remaining: 0,
+          remaining: @limit - @requests.size,
           reset_at: reset_at,
           blocked_until: nil
         )
       end
-
-      # Increment current slot atomically
-      @slots[slot_idx].add(1_i64)
-
-      # Calculate remaining and reset time
-      remaining = @limit - (total_count.to_i32 + 1)
-      remaining = 0 if remaining < 0
-      oldest_ts = find_oldest_valid_slot_timestamp(now_unix)
-      reset_at = Time.unix(oldest_ts + @window_sec)
-
-      RateLimitResult.new(
-        allowed: true,
-        limit: @limit,
-        remaining: remaining,
-        reset_at: reset_at,
-        blocked_until: nil
-      )
     end
 
     # Block until specified time
     def block(until_time : Time)
-      @blocked_until.set(until_time.to_unix)
-      clear_all_slots
-    end
-
-    # Clear all slots
-    def clear_all_slots
-      RING_BUFFER_SLOTS.times do |i|
-        @slots[i].set(0_i64)
-        @slot_timestamps[i].set(0_i64)
+      @mutex.synchronize do
+        @blocked_until = until_time
+        @requests.clear
       end
     end
 
-    # Check if this counter should be evicted (lock-free)
-    def should_evict?(now_unix : Int64, max_age_sec : Int32) : Bool
-      # If blocked, don't evict
-      return false if @blocked_until.get > 0
+    # Check if this counter should be evicted
+    def should_evict?(now : Time, max_age_sec : Int32) : Bool
+      @mutex.synchronize do
+        return false if @blocked_until
 
-      # Check if all slots are stale
-      RING_BUFFER_SLOTS.times do |i|
-        slot_ts = @slot_timestamps[i].get
-        if slot_ts > 0 && (now_unix - slot_ts) < max_age_sec
-          return false
+        if @requests.empty?
+          return true
         end
-      end
 
-      true
+        last_request = @requests.last?
+        if last_request && (now - last_request).total_seconds > max_age_sec
+          return true
+        end
+
+        false
+      end
     end
 
-    # Count requests within the sliding window
-    private def count_requests_in_window(now_unix : Int64) : Int64
-      total = 0_i64
-      window_start = now_unix - @window_sec
+    # Cleanup old requests
+    def cleanup(now : Time) : Bool
+      @mutex.synchronize do
+        return false if @blocked_until
 
-      RING_BUFFER_SLOTS.times do |i|
-        slot_ts = @slot_timestamps[i].get
-        if slot_ts >= window_start
-          total += @slots[i].get
-        end
+        window_start = now - @window_sec.seconds
+        old_size = @requests.size
+        @requests.reject! { |req_time| req_time < window_start }
+        @requests.size < old_size
       end
-
-      total
-    end
-
-    # Find oldest valid slot timestamp for reset calculation
-    private def find_oldest_valid_slot_timestamp(now_unix : Int64) : Int64
-      oldest = now_unix
-      window_start = now_unix - @window_sec
-
-      RING_BUFFER_SLOTS.times do |i|
-        slot_ts = @slot_timestamps[i].get
-        if slot_ts >= window_start && slot_ts > 0 && slot_ts < oldest
-          oldest = slot_ts
-        end
-      end
-
-      oldest
     end
   end
 
@@ -214,8 +167,6 @@ module KemalWAF
   # Sharded IP State Map
   # =============================================================================
   # Reduces lock contention by distributing IP states across multiple shards
-  # Each shard has its own lock, so concurrent requests to different IPs
-  # don't block each other
   # =============================================================================
   class ShardedIPStateMap
     @shards : Array(Hash(String, SlidingWindowCounter))
@@ -232,7 +183,6 @@ module KemalWAF
 
     # Get shard index for a key using hash
     private def shard_index(key : String) : Int32
-      # Simple hash-based sharding
       (key.hash % SHARD_COUNT).to_i32
     end
 
@@ -240,13 +190,7 @@ module KemalWAF
     def get_or_create(key : String, limit : Int32? = nil, window_sec : Int32? = nil) : SlidingWindowCounter
       idx = shard_index(key)
       
-      # Fast path: check without lock
-      counter = @shards[idx][key]?
-      return counter if counter
-
-      # Slow path: create with lock
       @shard_locks[idx].synchronize do
-        # Double-check after acquiring lock
         counter = @shards[idx][key]?
         return counter if counter
 
@@ -262,7 +206,9 @@ module KemalWAF
     # Get existing counter (returns nil if not found)
     def get(key : String) : SlidingWindowCounter?
       idx = shard_index(key)
-      @shards[idx][key]?
+      @shard_locks[idx].synchronize do
+        @shards[idx][key]?
+      end
     end
 
     # Delete counter
@@ -288,7 +234,6 @@ module KemalWAF
 
     # Cleanup stale entries (with time budget)
     def cleanup(now : Time, max_age_sec : Int32, max_duration_ms : Int32 = EVICTION_MAX_DURATION_MS) : Int32
-      now_unix = now.to_unix
       start_time = Time.monotonic
       removed = 0
 
@@ -301,7 +246,7 @@ module KemalWAF
 
         @shard_locks[idx].synchronize do
           @shards[idx].each do |key, counter|
-            if counter.should_evict?(now_unix, max_age_sec)
+            if counter.should_evict?(now, max_age_sec)
               keys_to_remove << key
             end
           end
@@ -320,14 +265,16 @@ module KemalWAF
     def size : Int32
       total = 0
       SHARD_COUNT.times do |idx|
-        total += @shards[idx].size
+        @shard_locks[idx].synchronize do
+          total += @shards[idx].size
+        end
       end
       total
     end
   end
 
   # =============================================================================
-  # Lock-Free Rate Limiter
+  # Rate Limiter with Sharded State Map
   # =============================================================================
   class RateLimiter
     Log = ::Log.for("rate_limiter")
@@ -364,7 +311,7 @@ module KemalWAF
       end
     end
 
-    # Check rate limit (lock-free in hotpath)
+    # Check rate limit
     def check(ip : String, path : String) : RateLimitResult
       now = Time.utc
       now_unix = now.to_unix
@@ -381,10 +328,10 @@ module KemalWAF
                     "#{ip}:default"
                   end
 
-      # Get or create counter (lock-free after initial creation)
+      # Get or create counter
       counter = @ip_states.get_or_create(state_key, limit, window_sec)
 
-      # Check rate limit (completely lock-free)
+      # Check rate limit
       result = counter.check(now)
 
       # Trigger cleanup if needed (non-blocking)

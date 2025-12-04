@@ -81,3 +81,5 @@ __pycache__/
 venv/
 .venv/
 
+config/certs/
+config/prod.yaml

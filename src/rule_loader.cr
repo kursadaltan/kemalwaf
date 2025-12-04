@@ -208,8 +208,9 @@ module KemalWAF
     end
 
     # Get current rules (lock-free through snapshot)
+    # Get current rules (returns copy for thread-safety compatibility)
     def rules : Array(Rule)
-      @snapshot_holder.get.rules
+      @snapshot_holder.get.rules.dup
     end
 
     # Get current snapshot
