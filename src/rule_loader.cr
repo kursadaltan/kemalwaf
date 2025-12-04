@@ -1,7 +1,18 @@
 require "yaml"
 require "file"
+require "atomic"
 
 module KemalWAF
+  # =============================================================================
+  # IMMUTABLE RULE SNAPSHOT IMPLEMENTATION
+  # =============================================================================
+  # High-performance rule loading using:
+  # - Immutable rule snapshots
+  # - Atomic pointer swap for hot-reload
+  # - Version tracking for snapshot identification
+  # - Zero-downtime configuration updates
+  # =============================================================================
+
   # Variable yapısı (esnek variable tanımlama için)
   struct VariableSpec
     include YAML::Serializable
@@ -23,10 +34,8 @@ module KemalWAF
         node.nodes.each do |item|
           case item
           when YAML::Nodes::Scalar
-            # String formatı: "ARGS" (eski format - backward compatibility)
             result << VariableSpec.new(item.value)
           when YAML::Nodes::Mapping
-            # Mapping format: {type: "HEADERS", names: [...]} (new format)
             type_val = ""
             names_val = nil
 
@@ -76,7 +85,6 @@ module KemalWAF
     @[YAML::Field(ignore: true)]
     property compiled_regex : Regex?
 
-    # Variable spec'leri al
     def variable_specs : Array(VariableSpec)
       @variables
     end
@@ -87,7 +95,6 @@ module KemalWAF
     end
 
     def compile_pattern
-      # Only compile pattern for regex operator
       op = @operator || "regex"
       if op == "regex"
         if pattern = @pattern
@@ -95,45 +102,143 @@ module KemalWAF
         end
       end
     rescue ex
-      # Log error - no need to log during compile_pattern
       @compiled_regex = nil
     end
   end
 
-  # Rule loader and hot-reload manager
+  # =============================================================================
+  # Immutable Rule Snapshot
+  # =============================================================================
+  # Represents a frozen, immutable collection of WAF rules
+  # Once created, the rules cannot be modified
+  # Used for atomic hot-reload without locks
+  # =============================================================================
+  class RuleSnapshot
+    Log = ::Log.for("rule_snapshot")
+
+    getter rules : Array(Rule)
+    getter version : Int64
+    getter created_at : Time
+    getter rule_count : Int32
+    getter file_checksums : Hash(String, String)
+
+    def initialize(@rules : Array(Rule), @version : Int64, @file_checksums : Hash(String, String) = {} of String => String)
+      @created_at = Time.utc
+      @rule_count = @rules.size
+      Log.info { "RuleSnapshot v#{@version} created with #{@rule_count} rules" }
+    end
+
+    # Empty snapshot for initialization
+    def self.empty : RuleSnapshot
+      new([] of Rule, 0_i64)
+    end
+
+    # Check if snapshot is empty
+    def empty? : Bool
+      @rules.empty?
+    end
+
+    # Get rule by ID (O(n) - consider index if needed)
+    def find_by_id(id : Int32) : Rule?
+      @rules.find { |r| r.id == id }
+    end
+
+    # Snapshot statistics
+    def stats : NamedTuple(version: Int64, rule_count: Int32, created_at: Time)
+      {version: @version, rule_count: @rule_count, created_at: @created_at}
+    end
+  end
+
+  # =============================================================================
+  # Atomic Snapshot Holder
+  # =============================================================================
+  # Thread-safe container for the current rule snapshot
+  # Uses atomic operations for lock-free read access
+  # =============================================================================
+  class AtomicSnapshotHolder
+    @current : RuleSnapshot
+    @mutex : Mutex # Only used for writes
+
+    def initialize
+      @current = RuleSnapshot.empty
+      @mutex = Mutex.new
+    end
+
+    # Get current snapshot (lock-free read)
+    def get : RuleSnapshot
+      @current
+    end
+
+    # Swap to new snapshot (atomic swap)
+    def swap(new_snapshot : RuleSnapshot) : RuleSnapshot
+      @mutex.synchronize do
+        old = @current
+        @current = new_snapshot
+        old
+      end
+    end
+
+    # Get current version
+    def version : Int64
+      @current.version
+    end
+  end
+
+  # =============================================================================
+  # Rule Loader with Immutable Snapshots
+  # =============================================================================
+  # Manages rule loading and hot-reload using immutable snapshots
+  # All rule access is through snapshots for thread-safety
+  # =============================================================================
   class RuleLoader
     Log = ::Log.for("rule_loader")
 
-    @rules : Array(Rule)
     @rule_dir : String
     @file_mtimes : Hash(String, Time)
-    @mutex : Mutex
+    @snapshot_holder : AtomicSnapshotHolder
+    @version_counter : Atomic(Int64)
+    @mutex : Mutex # Only for file operations
 
     def initialize(@rule_dir : String)
-      @rules = [] of Rule
       @file_mtimes = {} of String => Time
+      @snapshot_holder = AtomicSnapshotHolder.new
+      @version_counter = Atomic(Int64).new(0_i64)
       @mutex = Mutex.new
       load_rules
     end
 
+    # Get current rules (lock-free through snapshot)
     def rules : Array(Rule)
-      @mutex.synchronize { @rules.dup }
+      @snapshot_holder.get.rules
     end
 
+    # Get current snapshot
+    def snapshot : RuleSnapshot
+      @snapshot_holder.get
+    end
+
+    # Get current snapshot version
+    def snapshot_version : Int64
+      @snapshot_holder.version
+    end
+
+    # Load rules and create new snapshot
     def load_rules
       new_rules = [] of Rule
       new_mtimes = {} of String => Time
+      new_checksums = {} of String => String
 
-      # Recursive olarak tüm .yaml dosyalarını yükle
+      # Load all YAML files recursively
       Dir.glob(File.join(@rule_dir, "**", "*.yaml")).each do |file_path|
         begin
           mtime = File.info(file_path).modification_time
           new_mtimes[file_path] = mtime
 
           content = File.read(file_path)
+          new_checksums[file_path] = content.hash.to_s
+
           yaml_data = YAML.parse(content)
 
-          # New format: root must be Hash and contain "rules" key
           unless yaml_data.raw.is_a?(Hash) && yaml_data["rules"]?
             Log.warn { "Invalid YAML format #{file_path}: root must be a Hash and contain 'rules' key" }
             next
@@ -147,7 +252,6 @@ module KemalWAF
 
           rule_count = 0
           rules_node.as_a.each do |rule_node|
-            # Convert each rule_node to YAML string and parse to Rule
             rule_yaml = rule_node.to_yaml
             rule = Rule.from_yaml(rule_yaml)
             rule.compile_pattern
@@ -161,17 +265,25 @@ module KemalWAF
         end
       end
 
+      # Create new immutable snapshot
+      new_version = @version_counter.add(1_i64)
+      new_snapshot = RuleSnapshot.new(new_rules, new_version, new_checksums)
+
+      # Atomic swap to new snapshot
       @mutex.synchronize do
-        @rules = new_rules
+        old_snapshot = @snapshot_holder.swap(new_snapshot)
         @file_mtimes = new_mtimes
+        Log.info { "Snapshot swapped: v#{old_snapshot.version} -> v#{new_snapshot.version} (#{new_rules.size} rules)" }
       end
 
-      Log.info { "Total #{@rules.size} rules loaded" }
+      Log.info { "Total #{new_rules.size} rules loaded in snapshot v#{new_version}" }
     end
 
-    def check_and_reload
+    # Check for changes and reload if needed
+    def check_and_reload : Bool
       needs_reload = false
 
+      # Check for modified files
       Dir.glob(File.join(@rule_dir, "**", "*.yaml")).each do |file_path|
         begin
           mtime = File.info(file_path).modification_time
@@ -184,22 +296,79 @@ module KemalWAF
         end
       end
 
-      # Silinen dosyaları kontrol et
-      @file_mtimes.keys.each do |file_path|
-        if !File.exists?(file_path)
-          needs_reload = true
-          break
+      # Check for deleted files
+      unless needs_reload
+        @file_mtimes.keys.each do |file_path|
+          if !File.exists?(file_path)
+            needs_reload = true
+            break
+          end
         end
       end
 
       if needs_reload
         Log.info { "Changes detected in rule files, reloading..." }
         load_rules
+        true
+      else
+        false
       end
     end
 
+    # Get rule count from current snapshot
     def rule_count : Int32
-      @mutex.synchronize { @rules.size }
+      @snapshot_holder.get.rule_count
+    end
+
+    # Get snapshot statistics
+    def stats : NamedTuple(version: Int64, rule_count: Int32, created_at: Time)
+      @snapshot_holder.get.stats
+    end
+
+    # Validate rules without activating (dry-run)
+    def validate_rules(rule_dir : String? = nil) : NamedTuple(valid: Bool, errors: Array(String), rule_count: Int32)
+      target_dir = rule_dir || @rule_dir
+      errors = [] of String
+      rule_count = 0
+
+      Dir.glob(File.join(target_dir, "**", "*.yaml")).each do |file_path|
+        begin
+          content = File.read(file_path)
+          yaml_data = YAML.parse(content)
+
+          unless yaml_data.raw.is_a?(Hash) && yaml_data["rules"]?
+            errors << "#{file_path}: Invalid YAML format"
+            next
+          end
+
+          rules_node = yaml_data["rules"]
+          unless rules_node.raw.is_a?(Array)
+            errors << "#{file_path}: 'rules' key must be an Array"
+            next
+          end
+
+          rules_node.as_a.each_with_index do |rule_node, idx|
+            begin
+              rule_yaml = rule_node.to_yaml
+              rule = Rule.from_yaml(rule_yaml)
+              rule.compile_pattern
+
+              # Validate regex if present
+              if rule.operator == "regex" && rule.pattern && rule.compiled_regex.nil?
+                errors << "#{file_path}[#{idx}]: Invalid regex pattern '#{rule.pattern}'"
+              end
+
+              rule_count += 1
+            rescue ex
+              errors << "#{file_path}[#{idx}]: #{ex.message}"
+            end
+          end
+        rescue ex
+          errors << "#{file_path}: #{ex.message}"
+        end
+      end
+
+      {valid: errors.empty?, errors: errors, rule_count: rule_count}
     end
   end
 end

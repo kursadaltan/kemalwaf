@@ -132,4 +132,3 @@ echo "     -v \$(pwd)/config/waf.yml:/app/config/waf.yml:ro \\"
 echo "     -v \$(pwd)/rules:/app/rules:ro \\"
 echo "     kursadaltan/kemalwaf:latest"
 echo ""
-

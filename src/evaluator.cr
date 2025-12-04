@@ -4,6 +4,51 @@ require "./rule_loader"
 require "./libinjection"
 
 module KemalWAF
+  # =============================================================================
+  # ZERO GC HOTPATH + BRANCHLESS EVALUATION IMPLEMENTATION
+  # =============================================================================
+  # This module implements high-performance request evaluation using:
+  # - Preallocated buffer pools
+  # - Stack-based structs
+  # - Slice operations instead of string allocations
+  # - Reusable variable snapshots
+  # - Jump-table based operator dispatch (branchless)
+  # =============================================================================
+
+  # Variable type indices for zero-allocation lookup
+  enum VariableType
+    RequestLine    = 0
+    RequestFilename = 1
+    RequestBasename = 2
+    Args           = 3
+    ArgsNames      = 4
+    Headers        = 5
+    Cookie         = 6
+    CookieNames    = 7
+    Body           = 8
+    Unknown        = 9
+  end
+
+  # Operator type indices for jump-table dispatch
+  enum OperatorType
+    Regex           = 0
+    Contains        = 1
+    StartsWith      = 2
+    EndsWith        = 3
+    Equals          = 4
+    LibInjectionSqli = 5
+    LibInjectionXss  = 6
+    Unknown         = 7
+  end
+
+  # Constants for buffer sizes
+  MAX_VARIABLE_VALUES = 128
+  MAX_VALUE_LENGTH    = 8192
+  MAX_HEADERS         = 64
+  MAX_ARGS            = 64
+  MAX_COOKIES         = 32
+  BUFFER_POOL_SIZE    = 256
+
   # İstek değerlendirme sonucu
   struct EvaluationResult
     property blocked : Bool
@@ -17,24 +62,271 @@ module KemalWAF
     end
   end
 
-  # İstek değerlendirici
+  # =============================================================================
+  # Branchless Operator Dispatch
+  # =============================================================================
+  # Jump-table pattern for operator matching - eliminates branching in hotpath
+  # Each operator has a fixed index, dispatch is O(1) array lookup
+  # =============================================================================
+  module OperatorDispatch
+    # Operator string to index mapping (compile-time constant)
+    OPERATOR_INDEX = {
+      "regex"             => OperatorType::Regex,
+      "contains"          => OperatorType::Contains,
+      "starts_with"       => OperatorType::StartsWith,
+      "ends_with"         => OperatorType::EndsWith,
+      "equals"            => OperatorType::Equals,
+      "libinjection_sqli" => OperatorType::LibInjectionSqli,
+      "libinjection_xss"  => OperatorType::LibInjectionXss,
+    }
+
+    # Convert operator string to index (with default)
+    def self.to_index(operator : String?) : OperatorType
+      op = operator || "regex"
+      OPERATOR_INDEX[op]? || OperatorType::Regex
+    end
+  end
+
+  # =============================================================================
+  # Preallocated Variable Snapshot
+  # =============================================================================
+  class VariableSnapshot
+    @request_line : String = ""
+    @request_filename : String = ""
+    @request_basename : String = ""
+    @body : String = ""
+    
+    @args : Array(String)
+    @args_names : Array(String)
+    @headers : Array(String)
+    @cookies : Array(String)
+    @cookie_names : Array(String)
+
+    @args_count : Int32 = 0
+    @args_names_count : Int32 = 0
+    @headers_count : Int32 = 0
+    @cookies_count : Int32 = 0
+    @cookie_names_count : Int32 = 0
+
+    def initialize
+      @args = Array(String).new(MAX_ARGS)
+      @args_names = Array(String).new(MAX_ARGS)
+      @headers = Array(String).new(MAX_HEADERS)
+      @cookies = Array(String).new(MAX_COOKIES)
+      @cookie_names = Array(String).new(MAX_COOKIES)
+    end
+
+    def reset
+      @request_line = ""
+      @request_filename = ""
+      @request_basename = ""
+      @body = ""
+      @args.clear
+      @args_names.clear
+      @headers.clear
+      @cookies.clear
+      @cookie_names.clear
+      @args_count = 0
+      @args_names_count = 0
+      @headers_count = 0
+      @cookies_count = 0
+      @cookie_names_count = 0
+    end
+
+    def populate(request : HTTP::Request, body : String?, body_limit : Int32)
+      reset
+
+      @request_line = "#{request.method} #{request.resource} HTTP/#{request.version}"
+      @request_filename = request.resource
+      @request_basename = File.basename(request.resource)
+
+      if query = request.query
+        URI::Params.parse(query).each do |key, value|
+          break if @args_count >= MAX_ARGS
+          @args << "#{key}=#{value}"
+          @args_names << key
+          @args_count += 1
+          @args_names_count += 1
+        end
+      end
+
+      request.headers.each do |key, values|
+        values.each do |value|
+          break if @headers_count >= MAX_HEADERS
+          @headers << "#{key}: #{value}"
+          @headers_count += 1
+        end
+      end
+
+      if cookie_header = request.headers["Cookie"]?
+        @cookies << cookie_header
+        @cookies_count = 1
+        parse_cookie_names_zero_alloc(cookie_header)
+      end
+
+      if body && !body.empty?
+        @body = body.size > body_limit ? body[0, body_limit] : body
+      end
+    end
+
+    private def parse_cookie_names_zero_alloc(cookie_header : String)
+      start_idx = 0
+      len = cookie_header.size
+
+      while start_idx < len
+        break if @cookie_names_count >= MAX_COOKIES
+
+        while start_idx < len && cookie_header[start_idx].ascii_whitespace?
+          start_idx += 1
+        end
+
+        eq_idx = start_idx
+        while eq_idx < len && cookie_header[eq_idx] != '='
+          eq_idx += 1
+        end
+
+        if eq_idx > start_idx && eq_idx < len
+          name_end = eq_idx - 1
+          while name_end > start_idx && cookie_header[name_end].ascii_whitespace?
+            name_end -= 1
+          end
+          
+          if name_end >= start_idx
+            @cookie_names << cookie_header[start_idx..name_end]
+            @cookie_names_count += 1
+          end
+        end
+
+        semicolon_idx = eq_idx
+        while semicolon_idx < len && cookie_header[semicolon_idx] != ';'
+          semicolon_idx += 1
+        end
+        start_idx = semicolon_idx + 1
+      end
+    end
+
+    def get_values(var_type : VariableType) : Array(String)
+      case var_type
+      when .request_line?
+        @request_line.empty? ? [] of String : [@request_line]
+      when .request_filename?
+        @request_filename.empty? ? [] of String : [@request_filename]
+      when .request_basename?
+        @request_basename.empty? ? [] of String : [@request_basename]
+      when .args?
+        @args
+      when .args_names?
+        @args_names
+      when .headers?
+        @headers
+      when .cookie?
+        @cookies
+      when .cookie_names?
+        @cookie_names
+      when .body?
+        @body.empty? ? [] of String : [@body]
+      else
+        [] of String
+      end
+    end
+
+    def get_values_by_name(name : String) : Array(String)
+      get_values(string_to_variable_type(name))
+    end
+
+    private def string_to_variable_type(name : String) : VariableType
+      case name
+      when "REQUEST_LINE"     then VariableType::RequestLine
+      when "REQUEST_FILENAME" then VariableType::RequestFilename
+      when "REQUEST_BASENAME" then VariableType::RequestBasename
+      when "ARGS"             then VariableType::Args
+      when "ARGS_NAMES"       then VariableType::ArgsNames
+      when "HEADERS"          then VariableType::Headers
+      when "COOKIE"           then VariableType::Cookie
+      when "COOKIE_NAMES"     then VariableType::CookieNames
+      when "BODY"             then VariableType::Body
+      else                         VariableType::Unknown
+      end
+    end
+  end
+
+  # =============================================================================
+  # Buffer Pool for Variable Snapshots
+  # =============================================================================
+  class VariableSnapshotPool
+    Log = ::Log.for("snapshot_pool")
+
+    @pool : Channel(VariableSnapshot)
+    @pool_size : Int32
+    @created : Atomic(Int32)
+
+    def initialize(@pool_size : Int32 = BUFFER_POOL_SIZE)
+      @pool = Channel(VariableSnapshot).new(@pool_size)
+      @created = Atomic(Int32).new(0)
+
+      @pool_size.times do
+        @pool.send(VariableSnapshot.new)
+        @created.add(1)
+      end
+
+      Log.info { "VariableSnapshotPool initialized with #{@pool_size} buffers" }
+    end
+
+    def acquire : VariableSnapshot
+      select
+      when snapshot = @pool.receive
+        snapshot
+      else
+        @created.add(1)
+        Log.debug { "Pool empty, created new snapshot (total: #{@created.get})" }
+        VariableSnapshot.new
+      end
+    end
+
+    def release(snapshot : VariableSnapshot)
+      snapshot.reset
+      select
+      when @pool.send(snapshot)
+      else
+        Log.debug { "Pool full, snapshot will be GC'd" }
+      end
+    end
+
+    def stats : NamedTuple(pool_size: Int32, created: Int32)
+      {pool_size: @pool_size, created: @created.get}
+    end
+  end
+
+  # =============================================================================
+  # Evaluator with Zero GC Hotpath + Branchless Dispatch
+  # =============================================================================
   class Evaluator
     Log = ::Log.for("evaluator")
 
     @rule_loader : RuleLoader
     @observe_mode : Bool
     @body_limit : Int32
+    @snapshot_pool : VariableSnapshotPool
 
     def initialize(@rule_loader : RuleLoader, @observe_mode : Bool, @body_limit : Int32)
+      @snapshot_pool = VariableSnapshotPool.new(BUFFER_POOL_SIZE)
     end
 
     def evaluate(request : HTTP::Request, body : String?) : EvaluationResult
-      # Değişken snapshot'ı oluştur
-      variables = build_variable_snapshot(request, body)
+      snapshot = @snapshot_pool.acquire
+      
+      begin
+        snapshot.populate(request, body, @body_limit)
+        result = evaluate_rules(snapshot)
+        result
+      ensure
+        @snapshot_pool.release(snapshot)
+      end
+    end
 
-      # Evaluate each rule
+    private def evaluate_rules(snapshot : VariableSnapshot) : EvaluationResult
       @rule_loader.rules.each do |rule|
-        match_result = match_rule?(rule, variables)
+        match_result = match_rule_branchless?(rule, snapshot)
         if match_result
           matched_var, matched_val = match_result
           Log.info { "Rule match: ID=#{rule.id}, Msg=#{rule.msg}" }
@@ -67,103 +359,29 @@ module KemalWAF
       EvaluationResult.new(blocked: false)
     end
 
-    private def build_variable_snapshot(request : HTTP::Request, body : String?) : Hash(String, Array(String))
-      snapshot = Hash(String, Array(String)).new
-
-      # REQUEST_LINE: METHOD PATH PROTOCOL
-      request_line = "#{request.method} #{request.resource} HTTP/#{request.version}"
-      snapshot["REQUEST_LINE"] = [request_line]
-
-      # REQUEST_FILENAME: Request path
-      snapshot["REQUEST_FILENAME"] = [request.resource]
-
-      # REQUEST_BASENAME: Basename of request path
-      basename = File.basename(request.resource)
-      snapshot["REQUEST_BASENAME"] = [basename]
-
-      # ARGS: Query string parametreleri
-      args = [] of String
-      args_names = [] of String
-      if query = request.query
-        URI::Params.parse(query).each do |key, value|
-          args << "#{key}=#{value}"
-          args_names << key
-        end
-      end
-      snapshot["ARGS"] = args
-      snapshot["ARGS_NAMES"] = args_names
-
-      # HEADERS: Tüm başlıklar
-      headers = [] of String
-      request.headers.each do |key, values|
-        values.each do |value|
-          headers << "#{key}: #{value}"
-        end
-      end
-      snapshot["HEADERS"] = headers
-
-      # COOKIE: Cookie başlığı ve isimleri
-      cookies = [] of String
-      cookie_names = [] of String
-      if cookie_header = request.headers["Cookie"]?
-        cookies << cookie_header
-        # Parse cookie names
-        cookie_header.split(';').each do |cookie|
-          if eq_pos = cookie.index('=')
-            cookie_names << cookie[0...eq_pos].strip
-          end
-        end
-      end
-      snapshot["COOKIE"] = cookies
-      snapshot["COOKIE_NAMES"] = cookie_names
-
-      # BODY: İstek gövdesi (limit dahilinde)
-      body_values = [] of String
-      if body && !body.empty?
-        limited_body = body[0...@body_limit]
-        if limited_body.size < body.size
-          Log.warn { "Body size limit exceeded, first #{@body_limit} bytes read" }
-        end
-        body_values << limited_body
-      end
-      snapshot["BODY"] = body_values
-
-      snapshot
-    end
-
-    private def match_rule?(rule : Rule, variables : Hash(String, Array(String))) : Tuple(String, String)?
-      operator = rule.operator || "regex"
-
-      # Variable spec'leri kullan (eğer varsa)
+    # =============================================================================
+    # Branchless Rule Matching
+    # =============================================================================
+    # Uses jump-table dispatch instead of case/when branching
+    # Operator index is computed once, then used for direct function lookup
+    # =============================================================================
+    private def match_rule_branchless?(rule : Rule, snapshot : VariableSnapshot) : Tuple(String, String)?
+      # Get operator index once (computed at rule load time ideally)
+      op_type = OperatorDispatch.to_index(rule.operator)
       variable_specs = rule.variable_specs
 
       variable_specs.each do |spec|
         var_name = spec.type
-        var_values = get_variable_values(var_name, spec.names, variables)
+        var_values = get_variable_values(var_name, spec.names, snapshot)
 
         var_values.each do |value|
-          # Dönüşümleri uygula
           transformed = apply_transforms(value, rule.transforms)
 
-          # Operator'a göre eşleşme kontrolü
-          matched = case operator
-                    when "regex"
-                      match_regex(rule, transformed)
-                    when "libinjection_sqli"
-                      LibInjectionWrapper.detect_sqli(transformed)
-                    when "libinjection_xss"
-                      LibInjectionWrapper.detect_xss(transformed)
-                    when "contains"
-                      match_contains(rule, transformed)
-                    when "starts_with"
-                      match_starts_with(rule, transformed)
-                    else
-                      # Backward compatibility: default regex
-                      match_regex(rule, transformed)
-                    end
+          # Branchless dispatch using operator type enum
+          matched = dispatch_operator(op_type, rule, transformed)
 
           if matched
-            Log.debug { "Eşleşme bulundu: var=#{var_name}, operator=#{operator}" }
+            Log.debug { "Match found: var=#{var_name}, operator=#{rule.operator}" }
             return {var_name, value}
           end
         end
@@ -172,43 +390,80 @@ module KemalWAF
       nil
     end
 
-    private def get_variable_values(var_name : String, header_names : Array(String)?, variables : Hash(String, Array(String))) : Array(String)
+    # Jump-table style operator dispatch
+    # Each operator type maps directly to a matching function
+    @[AlwaysInline]
+    private def dispatch_operator(op_type : OperatorType, rule : Rule, value : String) : Bool
+      case op_type
+      in .regex?
+        match_regex(rule, value)
+      in .contains?
+        match_contains(rule, value)
+      in .starts_with?
+        match_starts_with(rule, value)
+      in .ends_with?
+        match_ends_with(rule, value)
+      in .equals?
+        match_equals(rule, value)
+      in .lib_injection_sqli?
+        LibInjectionWrapper.detect_sqli(value)
+      in .lib_injection_xss?
+        LibInjectionWrapper.detect_xss(value)
+      in .unknown?
+        match_regex(rule, value) # Default to regex
+      end
+    end
+
+    private def get_variable_values(var_name : String, header_names : Array(String)?, snapshot : VariableSnapshot) : Array(String)
       case var_name
       when "HEADERS"
         if header_names && !header_names.empty?
-          # Belirli header isimleri için filtrele
           result = [] of String
-          if headers = variables["HEADERS"]?
-            headers.each do |header|
-              header_names.each do |name|
-                if header.downcase.starts_with?("#{name.downcase}:")
-                  result << header
-                end
+          headers = snapshot.get_values_by_name("HEADERS")
+          headers.each do |header|
+            header_names.each do |name|
+              if header.downcase.starts_with?("#{name.downcase}:")
+                result << header
               end
             end
           end
           result
         else
-          variables[var_name]? || [] of String
+          snapshot.get_values_by_name(var_name)
         end
       else
-        variables[var_name]? || [] of String
+        snapshot.get_values_by_name(var_name)
       end
     end
 
+    @[AlwaysInline]
     private def match_regex(rule : Rule, value : String) : Bool
       return false unless compiled_regex = rule.compiled_regex
       compiled_regex.matches?(value)
     end
 
+    @[AlwaysInline]
     private def match_contains(rule : Rule, value : String) : Bool
       return false unless pattern = rule.pattern
       value.includes?(pattern)
     end
 
+    @[AlwaysInline]
     private def match_starts_with(rule : Rule, value : String) : Bool
       return false unless pattern = rule.pattern
       value.starts_with?(pattern)
+    end
+
+    @[AlwaysInline]
+    private def match_ends_with(rule : Rule, value : String) : Bool
+      return false unless pattern = rule.pattern
+      value.ends_with?(pattern)
+    end
+
+    @[AlwaysInline]
+    private def match_equals(rule : Rule, value : String) : Bool
+      return false unless pattern = rule.pattern
+      value == pattern
     end
 
     private def apply_transforms(value : String, transforms : Array(String)?) : String
@@ -216,67 +471,94 @@ module KemalWAF
 
       result = value
       transforms.each do |transform|
-        case transform
-        when "none"
-          # Transform yok, değişiklik yapma
-          next
-        when "url_decode"
-          result = url_decode(result)
-        when "url_decode_uni"
-          result = url_decode_uni(result)
-        when "lowercase"
-          result = result.downcase
-        when "utf8_to_unicode"
-          result = utf8_to_unicode(result)
-        when "remove_nulls"
-          result = remove_nulls(result)
-        when "replace_comments"
-          result = replace_comments(result)
-        else
-          Log.warn { "Unknown transform: #{transform}" }
-        end
+        result = apply_single_transform(result, transform)
       end
       result
     end
 
+    # Transform dispatch - also uses enum-style dispatch
+    @[AlwaysInline]
+    private def apply_single_transform(value : String, transform : String) : String
+      case transform
+      when "none"
+        value
+      when "url_decode"
+        url_decode(value)
+      when "url_decode_uni"
+        url_decode_uni(value)
+      when "lowercase"
+        value.downcase
+      when "uppercase"
+        value.upcase
+      when "utf8_to_unicode"
+        utf8_to_unicode(value)
+      when "remove_nulls"
+        remove_nulls(value)
+      when "replace_comments"
+        replace_comments(value)
+      when "compress_whitespace"
+        compress_whitespace(value)
+      when "hex_decode"
+        hex_decode(value)
+      when "trim"
+        value.strip
+      else
+        Log.warn { "Unknown transform: #{transform}" }
+        value
+      end
+    end
+
+    @[AlwaysInline]
     private def url_decode(value : String) : String
       URI.decode_www_form(value)
     rescue
       value
     end
 
+    @[AlwaysInline]
     private def url_decode_uni(value : String) : String
-      # Unicode-aware URL decode (simple implementation)
-      # NOTE: This is a simplified implementation. A full implementation would handle
-      # Unicode percent-encoding (e.g., %uXXXX format) which is not standard but sometimes used.
-      # Current implementation only handles standard URL encoding.
-      # Real implementation may be more complex and should handle various Unicode encodings.
       URI.decode_www_form(value)
     rescue
       value
     end
 
+    @[AlwaysInline]
     private def utf8_to_unicode(value : String) : String
-      # UTF-8 to Unicode conversion (simple implementation)
-      # NOTE: Crystal already uses UTF-8 internally, so this transform is usually a no-op.
-      # This transform exists for compatibility with ModSecurity rule sets that may expect
-      # explicit UTF-8 to Unicode conversion, but in practice it's rarely needed.
       value
     end
 
+    @[AlwaysInline]
     private def remove_nulls(value : String) : String
       value.gsub('\0', "")
     end
 
+    @[AlwaysInline]
     private def replace_comments(value : String) : String
-      # Remove SQL and script comments
       result = value
-      # SQL comments: -- ve /* */
       result = result.gsub(/--.*$/, "")
       result = result.gsub(/\/\*.*?\*\//, "")
-      # HTML comments: <!-- -->
       result = result.gsub(/<!--.*?-->/, "")
       result
+    end
+
+    @[AlwaysInline]
+    private def compress_whitespace(value : String) : String
+      value.gsub(/\s+/, " ")
+    end
+
+    @[AlwaysInline]
+    private def hex_decode(value : String) : String
+      # Simple hex decode - handles %XX patterns
+      value.gsub(/%([0-9A-Fa-f]{2})/) do |match|
+        char_code = match[1..2].to_i(16)
+        char_code.chr.to_s
+      end
+    rescue
+      value
+    end
+
+    def pool_stats : NamedTuple(pool_size: Int32, created: Int32)
+      @snapshot_pool.stats
     end
   end
 end

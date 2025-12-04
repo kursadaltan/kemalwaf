@@ -209,8 +209,6 @@ module KemalWAF
 
     # TLS context oluştur ve döndür
     def get_tls_context : OpenSSL::SSL::Context::Server?
-      return nil unless @auto_generate || (@cert_file && @key_file)
-
       tls_context = OpenSSL::SSL::Context::Server.new
 
       # TLS versiyonu OpenSSL'in varsayılan ayarlarına göre belirlenir
@@ -231,8 +229,9 @@ module KemalWAF
         cert_path = @cert_file
         key_path = @key_file
       else
-        Log.error { "TLS enabled but no certificates provided" }
-        return nil
+        # Fallback: Sertifika dosyaları yoksa otomatik olarak self-signed oluştur
+        Log.warn { "TLS enabled but no certificates provided. Auto-generating self-signed certificate as fallback." }
+        cert_path, key_path = generate_self_signed
       end
 
       # Sertifika ve key dosyalarını yükle

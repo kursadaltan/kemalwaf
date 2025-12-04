@@ -3,6 +3,15 @@ waf:
   # WAF mode: enforce, observe, disabled
   mode: enforce
   
+  server:
+    http_enabled: true
+    https_enabled: true
+    http_port: 3030
+    https_port: 3443
+    tls:
+      auto_generate: true
+      auto_cert_dir: config/certs
+
   # Global default upstream (optional, for backward compatibility)
   # This is used if no domain-specific upstream exists
   upstream:
@@ -23,6 +32,7 @@ waf:
       upstream_host_header: "api.example.com"  # If empty, taken from upstream URI
       preserve_original_host: true
       verify_ssl: false  # Skip SSL certificate verification (for self-signed or internal certificates)
+
       
   # Rate limiting configuration
   rate_limiting:
