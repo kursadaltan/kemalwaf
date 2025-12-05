@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-12-05
+
+### Added
+
+#### Web Admin Panel 🎉
+- **Cloudflare-like Admin Interface**: Modern, user-friendly web UI for WAF management
+  - Single-page React + TypeScript application with shadcn/ui components
+  - Responsive design optimized for desktop and mobile
+  - Dark theme with professional Cloudflare-inspired aesthetics
+  - Real-time configuration management without YAML editing
+
+- **Domain Management**: Complete proxy host lifecycle management
+  - Add/edit/delete domains through intuitive modal interface
+  - SSL/TLS configuration (Let's Encrypt or custom certificates)
+  - Upstream server settings with host header control
+  - Rate limiting configuration per domain
+  - IP filtering rules (whitelist/blacklist)
+  - GeoIP blocking settings
+  - All settings consolidated in single modal (UX-first design)
+
+- **Authentication System**: Secure JWT-based authentication
+  - Setup wizard for initial admin user creation
+  - Argon2id password hashing for security
+  - JWT token-based authentication with localStorage
+  - Session management with configurable TTL (default: 24h)
+  - SQLite database for user and session storage
+
+- **Admin Backend API**: RESTful API for configuration management
+  - `/api/setup/status` - Check if setup is required
+  - `/api/setup` - Create initial admin user
+  - `/api/auth/login` - User authentication
+  - `/api/auth/logout` - Session termination
+  - `/api/auth/me` - Current user info
+  - `/api/hosts` - List all domains
+  - `/api/hosts` (POST) - Create new domain
+  - `/api/hosts/:domain` (PUT) - Update domain
+  - `/api/hosts/:domain` (DELETE) - Delete domain
+  - `/api/config` - Global WAF configuration
+  - `/api/health` - Health check endpoint
+
+- **Configuration Management**: Thread-safe YAML operations
+  - `ConfigManager` with mutex-protected file operations
+  - Automatic backup before config changes (`.bak` files)
+  - Real-time configuration reloading
+  - Atomic YAML write operations
+  - Error recovery with rollback support
+
+- **Docker Integration**: Single unified container
+  - Multi-stage Docker build for optimized image size
+  - WAF + Admin Panel in single image (~150MB)
+  - Both services start automatically with `/app/start.sh`
+  - Exposed ports: 3030 (HTTP), 3443 (HTTPS), 8888 (Admin)
+  - Persistent SQLite database with Docker volumes
+  - Built frontend served by admin backend
+
+### Changed
+
+- **Build System**: Added admin panel build targets to Makefile
+  - `make admin-deps` - Install admin dependencies
+  - `make admin-build` - Build admin panel (frontend + backend)
+  - `make admin-run` - Run admin panel
+  - `make admin-dev` - Start frontend dev server
+  - `make docker-build` - Build unified Docker image
+
+- **Documentation**: Enhanced README with admin panel information
+  - New quick start section for admin panel
+  - Updated features list with admin panel capabilities
+  - Added reference to detailed admin documentation
+
+### Fixed
+
+- **Admin SPA Routing**: Fixed 404 errors on direct navigation
+  - Custom `error 404` handler serves index.html for non-API routes
+  - Static file serving properly configured
+  - API routes return JSON 404, UI routes serve SPA
+
+- **CORS Configuration**: Proper cross-origin support for development
+  - Dynamic CORS origin handling
+  - Credentials support for cookie-based auth (legacy)
+  - Preflight OPTIONS request handling
+
 ## [1.1.1] - 2025-12-05
 
 ### Added

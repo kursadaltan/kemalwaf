@@ -36,8 +36,6 @@ A Web Application Firewall (WAF) Proof-of-Concept application built with [Kemal]
 - ✅ **Secure Authentication** - JWT-based with Argon2 password hashing
 - ✅ **Setup Wizard** - Easy first-time configuration
 
-See [DOCKER_ADMIN.md](DOCKER_ADMIN.md) for admin panel documentation.
-
 ## Quick Start
 
 ### 🆕 Running with Admin Panel (Recommended)
