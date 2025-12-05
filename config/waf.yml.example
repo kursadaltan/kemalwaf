@@ -15,6 +15,14 @@ waf:
   # Multi-domain configuration with SNI (Server Name Indication) support
   # Each domain can have its own TLS certificate
   # Priority: custom cert_file/key_file > letsencrypt_enabled > global TLS config
+  #
+  # Automatic SSL Certificate Creation:
+  # - At startup, WAF automatically creates Let's Encrypt certificates for domains with letsencrypt_enabled: true
+  # - Certificates are stored in config/certs/letsencrypt/<domain>/
+  # - Certificate renewal is checked every 12 hours, renewed 30 days before expiration
+  # - If certificate creation fails, domain works in HTTP-only mode (HTTPS not available)
+  # - Port 80 must be accessible for HTTP-01 challenge validation
+  #
   domains:
     # Example 1: Domain with custom certificate files
     "example.com":
@@ -25,15 +33,21 @@ waf:
       # cert_file: /etc/letsencrypt/live/example.com/fullchain.pem
       # key_file: /etc/letsencrypt/live/example.com/privkey.pem
 
-    # Example 2: Domain with Let's Encrypt auto-certificate
+    # Example 2: Domain with Let's Encrypt auto-certificate (RECOMMENDED)
+    # WAF automatically obtains and renews SSL certificate from Let's Encrypt
     "api.example.com":
       default_upstream: "http://localhost:8081"
       upstream_host_header: "api.example.com"
       preserve_original_host: true
       verify_ssl: false  # Skip SSL verification for upstream
       # Let's Encrypt automatic certificate (HTTP-01 challenge)
+      # Prerequisites:
+      #   - DNS A record points to this server
+      #   - Port 80 accessible from internet (for HTTP-01 challenge)
+      #   - Valid email address for Let's Encrypt account
       letsencrypt_enabled: true
       letsencrypt_email: admin@example.com
+      # Note: If certificate creation fails, domain will be served over HTTP only
 
     # Example 3: Subdomain with custom certificate
     "www.example.com":

@@ -12,7 +12,7 @@ services:
     volumes:
       - ./config/waf.yml:/app/config/waf.yml:ro
       - ./rules:/app/rules:ro
-      - ./config/certs:/app/config/certs
+      - waf-certs:/app/config/certs
       - ./logs:/app/logs
       - ./config/ip_whitelist.txt:/app/config/ip_whitelist.txt:ro
       - ./config/ip_blacklist.txt:/app/config/ip_blacklist.txt:ro
@@ -36,3 +36,6 @@ services:
 networks:
   waf-network:
     driver: bridge
+
+volumes:
+  waf-certs:

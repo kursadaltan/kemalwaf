@@ -44,7 +44,7 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install runtime dependencies (shared libraries)
+# Install runtime dependencies (shared libraries) + Certbot for Let's Encrypt
 # Note: libgcc_s is provided by gcc package (we only need the libs)
 RUN apk add --no-cache \
     ca-certificates \
@@ -53,7 +53,10 @@ RUN apk add --no-cache \
     yaml \
     pcre2 \
     gc \
-    gcc
+    gcc \
+    certbot \
+    python3 \
+    py3-pip
 
 # Copy binary from builder
 COPY --from=builder /app/bin/kemal-waf /app/kemal-waf
@@ -66,6 +69,15 @@ RUN addgroup -g 1000 waf && \
     adduser -D -u 1000 -G waf waf && \
     chown -R waf:waf /app
 
+# Create config/certs directory with proper permissions for Let's Encrypt
+RUN mkdir -p /app/config/certs/letsencrypt/webroot/.well-known/acme-challenge && \
+    mkdir -p /app/logs && \
+    chown -R waf:waf /app/config/certs /app/logs
+
+# Certbot needs to write to /etc/letsencrypt
+RUN mkdir -p /etc/letsencrypt && \
+    chown -R waf:waf /etc/letsencrypt
+
 USER waf
 
 # Environment defaults
@@ -75,7 +87,8 @@ ENV OBSERVE=false
 ENV BODY_LIMIT_BYTES=1048576
 ENV RELOAD_INTERVAL_SEC=5
 
-EXPOSE 3000
+# Expose HTTP and HTTPS ports
+EXPOSE 3030 3443
 
 CMD ["/app/kemal-waf"]
 

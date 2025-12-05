@@ -82,6 +82,9 @@ module KemalWAF
   @@config_loader : ConfigLoader? = nil
   @@pool_manager : ConnectionPoolManager? = nil
   @@tls_manager : TLSManager? = nil
+  
+  # Track domains that should only be served over HTTP (failed to get SSL certificate)
+  @@http_only_domains : Set(String) = Set(String).new
   begin
     if File.exists?(CONFIG_FILE)
       @@config_loader = ConfigLoader.new(CONFIG_FILE)
@@ -584,6 +587,9 @@ module KemalWAF
   if EFFECTIVE_HTTPS_ENABLED
     Log.info { "HTTPS_PORT: #{EFFECTIVE_HTTPS_PORT}" }
 
+    # Create initial SSL certificates for Let's Encrypt enabled domains
+    create_initial_certificates
+
     # SNI Manager logging
     if sni_manager = @@sni_manager
       domain_certs = sni_manager.list_domains
@@ -592,6 +598,14 @@ module KemalWAF
         domain_certs.each do |domain|
           Log.info { "  - #{domain}" }
         end
+      end
+    end
+
+    # HTTP-only domains logging
+    if @@http_only_domains.size > 0
+      Log.warn { "HTTP-only domains (SSL certificate not available): #{@@http_only_domains.size}" }
+      @@http_only_domains.each do |domain|
+        Log.warn { "  - #{domain}" }
       end
     end
 
@@ -673,6 +687,86 @@ module KemalWAF
 
   def self.letsencrypt_manager : LetsEncryptManager?
     @@letsencrypt_manager
+  end
+
+  def self.http_only_domains : Set(String)
+    @@http_only_domains
+  end
+
+  def self.is_http_only_domain?(domain : String) : Bool
+    @@http_only_domains.includes?(domain)
+  end
+
+  def self.add_http_only_domain(domain : String)
+    @@http_only_domains.add(domain)
+    Log.warn { "Domain '#{domain}' marked as HTTP-only (SSL certificate not available)" }
+  end
+
+  # Create initial SSL certificates for domains with letsencrypt_enabled: true
+  def self.create_initial_certificates
+    Log.info { "Starting initial SSL certificate creation..." }
+    
+    config_loader = @@config_loader
+    letsencrypt_manager = @@letsencrypt_manager
+    sni_manager = @@sni_manager
+    
+    return unless config_loader && letsencrypt_manager
+    
+    config = config_loader.get_config
+    return unless config
+    
+    created_count = 0
+    failed_count = 0
+    
+    config.domains.each do |domain, domain_config|
+      next unless domain_config.use_letsencrypt?
+      
+      Log.info { "Processing SSL certificate for domain '#{domain}'..." }
+      
+      # Check if certificate already exists and is valid
+      cert_path = letsencrypt_manager.get_cert_path(domain)
+      key_path = letsencrypt_manager.get_key_path(domain)
+      
+      if File.exists?(cert_path) && File.exists?(key_path) && !letsencrypt_manager.needs_renewal?(domain, 30)
+        Log.info { "Valid certificate already exists for '#{domain}'" }
+        
+        # Add to SNI manager
+        if sni_mgr = sni_manager
+          sni_mgr.add_domain_certificate(domain, cert_path, key_path, true)
+        end
+        
+        created_count += 1
+        next
+      end
+      
+      # Try to create certificate
+      begin
+        if letsencrypt_manager.create_certificate(domain, domain_config.letsencrypt_email)
+          Log.info { "SSL certificate created successfully for '#{domain}'" }
+          
+          # Add to SNI manager
+          if sni_mgr = sni_manager
+            cert_path = letsencrypt_manager.get_cert_path(domain)
+            key_path = letsencrypt_manager.get_key_path(domain)
+            if File.exists?(cert_path) && File.exists?(key_path)
+              sni_mgr.add_domain_certificate(domain, cert_path, key_path, true)
+            end
+          end
+          
+          created_count += 1
+        else
+          Log.warn { "Failed to create SSL certificate for '#{domain}', marking as HTTP-only" }
+          add_http_only_domain(domain)
+          failed_count += 1
+        end
+      rescue ex
+        Log.error { "Error creating SSL certificate for '#{domain}': #{ex.message}" }
+        add_http_only_domain(domain)
+        failed_count += 1
+      end
+    end
+    
+    Log.info { "Initial SSL certificate creation completed: #{created_count} created, #{failed_count} failed (HTTP-only)" }
   end
 
   def self.shutdown

@@ -107,21 +107,22 @@ module KemalWAF
       FileUtils.mkdir_p(domain_cert_dir)
 
       # Certbot webroot mode için komut oluştur
-      # Not: WAF'ın /.well-known/acme-challenge/ endpoint'ini kullanacak
-      webroot_path = File.join(@cert_dir, "webroot")
-      FileUtils.mkdir_p(webroot_path)
-      FileUtils.mkdir_p(File.join(webroot_path, ".well-known", "acme-challenge"))
+      # Webroot path'i WAF'ın ACME challenge dosyalarını sunduğu dizin olmalı
+      webroot = webroot_path
+      FileUtils.mkdir_p(webroot)
+      FileUtils.mkdir_p(File.join(webroot, ".well-known", "acme-challenge"))
 
+      # Certbot varsayılan olarak /etc/letsencrypt/live/domain/ altına yazar
+      # Biz kendi dizinimize kopyalayacağız
       cmd_args = [
         "certonly",
         "--webroot",
-        "-w", webroot_path,
+        "-w", webroot,
         "-d", domain,
-        "--cert-path", get_cert_path(domain),
-        "--key-path", get_key_path(domain),
-        "--fullchain-path", get_fullchain_path(domain),
         "--non-interactive",
         "--agree-tos",
+        "--keep-until-expiring",  # Mevcut geçerli sertifikayı koru
+        "--expand",               # Yeni domain'ler eklendiğinde genişlet
       ]
 
       if email
@@ -135,23 +136,71 @@ module KemalWAF
         cmd_args << "--staging"
       end
 
+      Log.debug { "Running certbot with args: #{cmd_args.join(" ")}" }
+
+      output_io = IO::Memory.new
       error_io = IO::Memory.new
-      result = Process.run("certbot", cmd_args, output: Process::Redirect::Close, error: error_io)
+      result = Process.run("certbot", cmd_args, output: output_io, error: error_io)
 
       if result.success?
-        Log.info { "Certificate obtained successfully for '#{domain}'" }
+        Log.info { "Certbot successfully obtained certificate for '#{domain}'" }
 
-        # Fullchain'i cert olarak kopyala
-        fullchain = get_fullchain_path(domain)
-        cert = get_cert_path(domain)
-        if File.exists?(fullchain) && !File.exists?(cert)
-          FileUtils.cp(fullchain, cert)
+        # Certbot'un oluşturduğu sertifikaları kendi dizinimize kopyala
+        letsencrypt_live_dir = "/etc/letsencrypt/live/#{domain}"
+        if Dir.exists?(letsencrypt_live_dir)
+          copy_letsencrypt_certificates(domain, letsencrypt_live_dir)
+        else
+          Log.warn { "Certbot succeeded but live directory not found: #{letsencrypt_live_dir}" }
+          # Staging modunda farklı bir path olabilir
+          staging_dir = "/etc/letsencrypt/live/#{domain}-0001"
+          if Dir.exists?(staging_dir)
+            copy_letsencrypt_certificates(domain, staging_dir)
+          end
         end
 
         true
       else
         error_output = error_io.to_s
-        Log.error { "Certbot failed for '#{domain}': #{error_output}" }
+        output_text = output_io.to_s
+        Log.error { "Certbot failed for '#{domain}':" }
+        Log.error { "  stdout: #{output_text}" } unless output_text.empty?
+        Log.error { "  stderr: #{error_output}" } unless error_output.empty?
+        false
+      end
+    end
+
+    # Certbot'un oluşturduğu sertifikaları kendi dizinimize kopyala
+    private def copy_letsencrypt_certificates(domain : String, source_dir : String) : Bool
+      domain_cert_dir = File.join(@cert_dir, domain)
+      FileUtils.mkdir_p(domain_cert_dir)
+
+      begin
+        # fullchain.pem -> cert.pem
+        source_fullchain = File.join(source_dir, "fullchain.pem")
+        if File.exists?(source_fullchain)
+          FileUtils.cp(source_fullchain, get_cert_path(domain))
+          Log.debug { "Copied fullchain.pem to #{get_cert_path(domain)}" }
+        end
+
+        # privkey.pem -> privkey.pem
+        source_privkey = File.join(source_dir, "privkey.pem")
+        if File.exists?(source_privkey)
+          FileUtils.cp(source_privkey, get_key_path(domain))
+          File.chmod(get_key_path(domain), 0o600)
+          Log.debug { "Copied privkey.pem to #{get_key_path(domain)}" }
+        end
+
+        # chain.pem (opsiyonel)
+        source_chain = File.join(source_dir, "chain.pem")
+        if File.exists?(source_chain)
+          FileUtils.cp(source_chain, get_chain_path(domain))
+          Log.debug { "Copied chain.pem to #{get_chain_path(domain)}" }
+        end
+
+        Log.info { "Certificates copied to #{domain_cert_dir}" }
+        true
+      rescue ex
+        Log.error { "Failed to copy certificates: #{ex.message}" }
         false
       end
     end
