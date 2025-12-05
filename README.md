@@ -58,13 +58,83 @@ docker compose up -d
 
 On first access, the admin panel will guide you through setup wizard to create your admin user.
 
-See [DOCKER_ADMIN.md](DOCKER_ADMIN.md) for detailed admin panel documentation.
+### 🐳 Running with Docker Run
+
+If you prefer `docker run` over `docker compose`:
+
+```bash
+# 1. Build the image (if not using Docker Hub)
+docker build -t kemal-waf:latest .
+
+# 2. Create network and volumes
+docker network create waf-network
+docker volume create waf-certs
+docker volume create admin-data
+
+# 3. Run the container
+docker run -d \
+  --name kemal-waf \
+  --network waf-network \
+  -p 80:3030 \
+  -p 443:3443 \
+  -p 8888:8888 \
+  -v $(pwd)/config/waf.yml:/app/config/waf.yml \
+  -v $(pwd)/rules:/app/rules:ro \
+  -v waf-certs:/app/config/certs \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/config/ip_whitelist.txt:/app/config/ip_whitelist.txt:ro \
+  -v $(pwd)/config/ip_blacklist.txt:/app/config/ip_blacklist.txt:ro \
+  -v admin-data:/app/admin/data \
+  kemal-waf:latest
+
+# 4. View logs
+docker logs -f kemal-waf
+
+# 5. Stop and remove
+docker stop kemal-waf
+docker rm kemal-waf
+```
+
+**Minimal Setup (without config files):**
+```bash
+docker run -d \
+  --name kemal-waf \
+  -p 80:3030 \
+  -p 443:3443 \
+  -p 8888:8888 \
+  -v waf-certs:/app/config/certs \
+  -v admin-data:/app/admin/data \
+  kemal-waf:latest
+```
 
 ### Running from Docker Hub
 
-#### Quick Start (Default Rules)
+#### Quick Start with Admin Panel
 
-Default rules are already included in the Docker image, so volume mount is optional:
+```bash
+# Pull the latest image
+docker pull kursadaltan/kemalwaf:latest
+
+# Create volumes
+docker volume create waf-certs
+docker volume create admin-data
+
+# Run with Admin Panel
+docker run -d \
+  --name kemal-waf \
+  -p 80:3030 \
+  -p 443:3443 \
+  -p 8888:8888 \
+  -v waf-certs:/app/config/certs \
+  -v admin-data:/app/admin/data \
+  kursadaltan/kemalwaf:latest
+
+# Access Admin Panel: http://localhost:8888
+```
+
+#### WAF Only (Legacy, without Admin Panel)
+
+Default rules are already included in the Docker image:
 
 ```bash
 # Pull the image from Docker Hub
