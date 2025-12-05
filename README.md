@@ -75,8 +75,8 @@ docker volume create admin-data
 docker run -d \
   --name kemal-waf \
   --network waf-network \
-  -p 80:3030 \
-  -p 443:3443 \
+  -p 3030:3030 \
+  -p 3443:3443 \
   -p 8888:8888 \
   -v $(pwd)/config/waf.yml:/app/config/waf.yml \
   -v $(pwd)/rules:/app/rules:ro \
@@ -85,7 +85,7 @@ docker run -d \
   -v $(pwd)/config/ip_whitelist.txt:/app/config/ip_whitelist.txt:ro \
   -v $(pwd)/config/ip_blacklist.txt:/app/config/ip_blacklist.txt:ro \
   -v admin-data:/app/admin/data \
-  kemal-waf:latest
+  kursadaltan/kemalwaf:latest
 
 # 4. View logs
 docker logs -f kemal-waf
