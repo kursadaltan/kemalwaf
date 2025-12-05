@@ -33,7 +33,6 @@ waf:
       preserve_original_host: true
       verify_ssl: false  # Skip SSL certificate verification (for self-signed or internal certificates)
 
-      
   # Rate limiting configuration
   rate_limiting:
     enabled: true
@@ -86,3 +85,4 @@ waf:
     max_size: 100          # Max pool size
     idle_timeout: 300s    # Idle connection timeout
     health_check: true    # Connection health check
+

@@ -82,7 +82,7 @@ module KemalWAF
   @@config_loader : ConfigLoader? = nil
   @@pool_manager : ConnectionPoolManager? = nil
   @@tls_manager : TLSManager? = nil
-  
+
   # Track domains that should only be served over HTTP (failed to get SSL certificate)
   @@http_only_domains : Set(String) = Set(String).new
   begin
@@ -705,45 +705,45 @@ module KemalWAF
   # Create initial SSL certificates for domains with letsencrypt_enabled: true
   def self.create_initial_certificates
     Log.info { "Starting initial SSL certificate creation..." }
-    
+
     config_loader = @@config_loader
     letsencrypt_manager = @@letsencrypt_manager
     sni_manager = @@sni_manager
-    
+
     return unless config_loader && letsencrypt_manager
-    
+
     config = config_loader.get_config
     return unless config
-    
+
     created_count = 0
     failed_count = 0
-    
+
     config.domains.each do |domain, domain_config|
       next unless domain_config.use_letsencrypt?
-      
+
       Log.info { "Processing SSL certificate for domain '#{domain}'..." }
-      
+
       # Check if certificate already exists and is valid
       cert_path = letsencrypt_manager.get_cert_path(domain)
       key_path = letsencrypt_manager.get_key_path(domain)
-      
+
       if File.exists?(cert_path) && File.exists?(key_path) && !letsencrypt_manager.needs_renewal?(domain, 30)
         Log.info { "Valid certificate already exists for '#{domain}'" }
-        
+
         # Add to SNI manager
         if sni_mgr = sni_manager
           sni_mgr.add_domain_certificate(domain, cert_path, key_path, true)
         end
-        
+
         created_count += 1
         next
       end
-      
+
       # Try to create certificate
       begin
         if letsencrypt_manager.create_certificate(domain, domain_config.letsencrypt_email)
           Log.info { "SSL certificate created successfully for '#{domain}'" }
-          
+
           # Add to SNI manager
           if sni_mgr = sni_manager
             cert_path = letsencrypt_manager.get_cert_path(domain)
@@ -752,7 +752,7 @@ module KemalWAF
               sni_mgr.add_domain_certificate(domain, cert_path, key_path, true)
             end
           end
-          
+
           created_count += 1
         else
           Log.warn { "Failed to create SSL certificate for '#{domain}', marking as HTTP-only" }
@@ -765,7 +765,7 @@ module KemalWAF
         failed_count += 1
       end
     end
-    
+
     Log.info { "Initial SSL certificate creation completed: #{created_count} created, #{failed_count} failed (HTTP-only)" }
   end
 

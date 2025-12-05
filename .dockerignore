@@ -8,4 +8,13 @@ bin/
 lib/
 .shards/
 shard.lock
+node_modules/
+admin-ui/node_modules/
+admin-ui/dist/
+admin/bin/
+admin/lib/
+admin/.shards/
+data/
+logs/
+*.log
 

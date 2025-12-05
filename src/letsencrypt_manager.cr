@@ -121,8 +121,8 @@ module KemalWAF
         "-d", domain,
         "--non-interactive",
         "--agree-tos",
-        "--keep-until-expiring",  # Mevcut geçerli sertifikayı koru
-        "--expand",               # Yeni domain'ler eklendiğinde genişlet
+        "--keep-until-expiring", # Mevcut geçerli sertifikayı koru
+        "--expand",              # Yeni domain'ler eklendiğinde genişlet
       ]
 
       if email

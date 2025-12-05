@@ -1,0 +1,21 @@
+name: kemal-waf-admin
+version: 1.0.0
+
+authors:
+  - kemal-waf contributors
+
+crystal: ">= 1.12.0"
+
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+    branch: master
+  sqlite3:
+    github: crystal-lang/crystal-sqlite3
+
+targets:
+  kemal-waf-admin:
+    main: src/admin.cr
+
+license: Apache-2.0
+

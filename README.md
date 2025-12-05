@@ -11,6 +11,7 @@ A Web Application Firewall (WAF) Proof-of-Concept application built with [Kemal]
 
 ## Features
 
+### Core WAF Features
 - ✅ YAML format rule loading with multiple operator support
 - ✅ **LibInjection** integration - Real SQLi/XSS detection
 - ✅ Request variables: `REQUEST_LINE`, `ARGS`, `ARGS_NAMES`, `HEADERS`, `BODY`, `COOKIE`, `COOKIE_NAMES`, `REQUEST_FILENAME`, `REQUEST_BASENAME`
@@ -25,9 +26,41 @@ A Web Application Firewall (WAF) Proof-of-Concept application built with [Kemal]
 - ✅ **SNI (Server Name Indication)** - Per-domain TLS certificates
 - ✅ **Let's Encrypt integration** - Automatic certificate generation and renewal
 - ✅ **HTTP and HTTPS** can run simultaneously
-- ✅ Easy deployment with Docker and docker-compose
+
+### 🎉 New: Web Admin Panel
+- ✅ **Cloudflare-like UI** - Modern, user-friendly interface
+- ✅ **Single Docker Image** - WAF + Admin Panel integrated
+- ✅ **Domain Management** - Add/edit/delete proxy hosts via GUI
+- ✅ **SSL/TLS Management** - Configure Let's Encrypt or custom certificates
+- ✅ **Real-time Config** - Changes apply immediately
+- ✅ **Secure Authentication** - JWT-based with Argon2 password hashing
+- ✅ **Setup Wizard** - Easy first-time configuration
+
+See [DOCKER_ADMIN.md](DOCKER_ADMIN.md) for admin panel documentation.
 
 ## Quick Start
+
+### 🆕 Running with Admin Panel (Recommended)
+
+The easiest way to get started with both WAF and Admin Panel:
+
+```bash
+# Clone the repository
+git clone https://github.com/kursadaltan/kemalwaf.git
+cd kemalwaf
+
+# Build and start (includes WAF + Admin Panel)
+docker compose up -d
+
+# Access the services:
+# - Admin Panel: http://localhost:8888
+# - WAF HTTP: http://localhost:80
+# - WAF HTTPS: https://localhost:443
+```
+
+On first access, the admin panel will guide you through setup wizard to create your admin user.
+
+See [DOCKER_ADMIN.md](DOCKER_ADMIN.md) for detailed admin panel documentation.
 
 ### Running from Docker Hub
 

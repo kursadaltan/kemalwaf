@@ -1,24 +1,22 @@
-version: "3.8"
-
 services:
   waf:
     build: .
     platform: linux/amd64
     ports:
-      - "80:3030"
-      - "443:3443"
+      - "80:3030"      # WAF HTTP
+      - "443:3443"     # WAF HTTPS
+      - "8888:8888"    # Admin Panel
     env_file:
       - .env
     volumes:
-      - ./config/waf.yml:/app/config/waf.yml:ro
+      - ./config/waf.yml:/app/config/waf.yml
       - ./rules:/app/rules:ro
       - waf-certs:/app/config/certs
       - ./logs:/app/logs
       - ./config/ip_whitelist.txt:/app/config/ip_whitelist.txt:ro
       - ./config/ip_blacklist.txt:/app/config/ip_blacklist.txt:ro
+      - admin-data:/app/admin/data
       # - ./config/Maxmind/GeoLite2-Country.mmdb:/app/config/Maxmind/GeoLite2-Country.mmdb:ro
-    depends_on:
-      - upstream
     networks:
       - waf-network
 
@@ -39,3 +37,4 @@ networks:
 
 volumes:
   waf-certs:
+  admin-data:

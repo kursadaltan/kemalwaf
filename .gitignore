@@ -83,3 +83,12 @@ venv/
 
 config/certs/
 config/prod.yaml
+
+# Admin panel
+admin/bin/
+admin/lib/
+admin/.shards/
+admin/data/
+admin/public/
+admin-ui/node_modules/
+admin-ui/dist/

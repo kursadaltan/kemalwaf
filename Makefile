@@ -83,6 +83,10 @@ waf-tester:
 	./tools/waf_tester.py
 
 # Docker komutları
+docker-build:
+	@echo "🐳 Docker image build ediliyor (WAF + Admin Panel)..."
+	docker-compose build
+
 up:
 	docker-compose up -d
 
@@ -95,5 +99,38 @@ restart:
 logs:
 	docker-compose logs -f
 
+logs-waf:
+	docker-compose logs -f waf
+
 format:
 	crystal tool format
+
+# Admin panel komutları
+admin-deps:
+	@echo "📦 Admin panel bağımlılıkları yükleniyor..."
+	cd admin && shards install
+	cd admin-ui && npm install
+
+admin-build:
+	@echo "🔨 Admin panel derleniyor..."
+	cd admin && ./build.sh
+
+admin-build-ui:
+	@echo "📦 Admin UI derleniyor..."
+	cd admin-ui && npm run build
+
+admin-run:
+	@echo "🚀 Admin panel başlatılıyor..."
+	cd admin && ./bin/kemal-waf-admin
+
+admin-dev:
+	@echo "🔧 Admin UI development server başlatılıyor..."
+	cd admin-ui && npm run dev
+
+admin-clean:
+	@echo "🧹 Admin panel temizleniyor..."
+	rm -rf admin/bin admin/lib admin-ui/node_modules admin-ui/dist admin/public
+
+# Docker with admin (now integrated in main image)
+up-all:
+	docker-compose up -d
