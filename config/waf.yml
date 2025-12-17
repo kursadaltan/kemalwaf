@@ -33,7 +33,33 @@ waf:
       preserve_original_host: true
       verify_ssl: false  # Skip SSL certificate verification (for self-signed or internal certificates)
 
-  # Rate limiting configuration
+    "3dedi.com":
+      default_upstream: "https://91.241.48.11"
+      upstream_host_header: "3dedi.com"
+      preserve_original_host: true
+      verify_ssl: true
+      letsencrypt_enabled: true
+      letsencrypt_email: "admin@3dedi.com"  # Let's Encrypt email (required if letsencrypt_enabled is true)
+      waf_threshold: 5
+
+    "cloudapplicationsecurity.tr":
+      default_upstream: "http://85.111.14.39"
+      upstream_host_header: "cloudapplicationsecurity.tr"
+      preserve_original_host: true
+      verify_ssl: true
+      letsencrypt_enabled: true
+      letsencrypt_email: "iletisim@kursadaltan.com"
+      waf_threshold: 5
+
+    "admin.cloudapplicationsecurity.tr":
+      default_upstream: "http://85.111.14.39:8888"
+      upstream_host_header: "admin.cloudapplicationsecurity.tr"
+      preserve_original_host: true
+      verify_ssl: true
+      letsencrypt_enabled: true
+      letsencrypt_email: "iletisim@kursadaltan.com"
+      waf_threshold: 5
+
   rate_limiting:
     enabled: true
     default_limit: 250
@@ -55,7 +81,7 @@ waf:
     
   # Rules configuration
   rules:
-    directory: rules/
+    directory: ../rules
     reload_interval: 5s
     
   # Logging configuration

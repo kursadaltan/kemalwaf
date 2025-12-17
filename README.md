@@ -58,6 +58,32 @@ docker compose up -d
 
 On first access, the admin panel will guide you through setup wizard to create your admin user.
 
+#### 🔀 Deploy Options
+
+**Option 1: Standalone** (Default - Admin Panel at root `/`)
+```bash
+# Build with default settings
+make docker-build
+# or
+docker compose build
+
+# Admin Panel: http://localhost:8888/
+# API: http://localhost:8888/api/
+```
+
+**Option 2: Behind Nginx Reverse Proxy** (Admin Panel at subpath `/admin/`)
+```bash
+# Build with Nginx subpath support
+make docker-build-nginx
+# or
+docker compose build --build-arg VITE_BASE_PATH=/admin/
+
+# Admin Panel: https://yourdomain.com/admin/
+# API: https://yourdomain.com/admin/api/
+```
+
+See [Nginx Configuration](#nginx-reverse-proxy-configuration) section below for Nginx setup details.
+
 ### 🐳 Running with Docker Run
 
 If you prefer `docker run` over `docker compose`:
@@ -647,6 +673,130 @@ ab -n 10000 -c 100 http://localhost:3000/api/test
 # Check metrics
 curl http://localhost:3000/metrics
 ```
+
+## Nginx Reverse Proxy Configuration
+
+When deploying the Admin Panel behind Nginx (e.g., at `https://yourdomain.com/admin/`), you need to:
+
+1. **Build with subpath support:**
+   ```bash
+   make docker-build-nginx
+   # or
+   docker compose build --build-arg VITE_BASE_PATH=/admin/
+   ```
+
+2. **Configure Nginx Proxy Manager or Custom Nginx:**
+
+### Option A: Nginx Proxy Manager (GUI)
+
+In your Proxy Host configuration for `yourdomain.com`, add these location blocks in the **Custom Nginx Configuration** section:
+
+```nginx
+# Admin Panel UI - /admin path
+location /admin/ {
+    proxy_pass http://kemal-waf:8888/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # WebSocket support
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+# Admin API - /admin/api path
+location /admin/api/ {
+    proxy_pass http://kemal-waf:8888/api/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Main WAF - proxy to backend
+location / {
+    proxy_pass http://kemal-waf:3030;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+### Option B: Standard Nginx Config
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name yourdomain.com;
+    
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+    
+    # Admin Panel
+    location /admin/ {
+        proxy_pass http://127.0.0.1:8888/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # Admin API
+    location /admin/api/ {
+        proxy_pass http://127.0.0.1:8888/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    # Main application (proxied through WAF)
+    location / {
+        proxy_pass http://127.0.0.1:3030;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Alternative: Subdomain Setup
+
+If you prefer a subdomain instead of a subpath (e.g., `admin.yourdomain.com`):
+
+1. **Build with default settings** (no `VITE_BASE_PATH` needed):
+   ```bash
+   make docker-build
+   ```
+
+2. **Create separate Nginx server block:**
+   ```nginx
+   server {
+       listen 443 ssl http2;
+       server_name admin.yourdomain.com;
+       
+       ssl_certificate /path/to/cert.pem;
+       ssl_certificate_key /path/to/key.pem;
+       
+       location / {
+           proxy_pass http://127.0.0.1:8888;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection "upgrade";
+       }
+   }
+   ```
 
 ## Architecture
 

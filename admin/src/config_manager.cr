@@ -3,6 +3,21 @@ require "json"
 require "file_utils"
 
 module AdminPanel
+  # WAF Rules configuration for domain
+  struct WAFRulesConfigData
+    include JSON::Serializable
+    include YAML::Serializable
+
+    property enabled : Array(Int32) = [] of Int32
+    property disabled : Array(Int32) = [] of Int32
+
+    def initialize(
+      @enabled : Array(Int32) = [] of Int32,
+      @disabled : Array(Int32) = [] of Int32,
+    )
+    end
+  end
+
   # Domain configuration for JSON serialization
   struct DomainConfigData
     include JSON::Serializable
@@ -16,6 +31,8 @@ module AdminPanel
     property letsencrypt_email : String? = nil
     property cert_file : String? = nil
     property key_file : String? = nil
+    property waf_threshold : Int32 = 5
+    property waf_rules : WAFRulesConfigData? = nil
 
     def initialize(
       @default_upstream : String,
@@ -26,6 +43,8 @@ module AdminPanel
       @letsencrypt_email : String? = nil,
       @cert_file : String? = nil,
       @key_file : String? = nil,
+      @waf_threshold : Int32 = 5,
+      @waf_rules : WAFRulesConfigData? = nil,
     )
     end
   end
@@ -127,9 +146,37 @@ module AdminPanel
 
     getter waf_config_path : String
     @mutex : Mutex
+    @backup_dir : String
 
     def initialize(@waf_config_path : String)
       @mutex = Mutex.new
+      # Use admin/data directory for backups (writable)
+      # Try multiple possible locations
+      possible_dirs = [
+        "data",                                    # Relative to admin directory
+        File.expand_path("admin/data", Dir.current), # From project root
+        File.expand_path("../logs", File.dirname(@waf_config_path)), # Near config
+        "/app/admin/data",                         # Docker container path
+        "/app/logs",                               # Docker logs path
+      ]
+      
+      @backup_dir = possible_dirs.find { |dir| Dir.exists?(dir) } || "data"
+      
+      # Create backup directory if it doesn't exist
+      begin
+        Dir.mkdir_p(@backup_dir) unless Dir.exists?(@backup_dir)
+        Log.info { "Config backup directory: #{File.expand_path(@backup_dir)}" }
+      rescue ex
+        Log.warn { "Failed to create backup directory #{@backup_dir}: #{ex.message}" }
+        # Fallback to current directory
+        @backup_dir = "."
+      end
+    end
+
+    private def get_backup_path : String
+      timestamp = Time.utc.to_s("%Y%m%d_%H%M%S")
+      config_name = File.basename(@waf_config_path, ".yml")
+      File.join(@backup_dir, "#{config_name}_#{timestamp}.bak")
     end
 
     # Read WAF config (always from file, no cache)
@@ -161,17 +208,50 @@ module AdminPanel
       # Parse domains
       if domains_node = node["domains"]?
         domains_node.as_h.each do |domain, settings|
-          domain_config = DomainConfigData.new(
-            default_upstream: settings["default_upstream"].as_s,
-            upstream_host_header: settings["upstream_host_header"]?.try(&.as_s) || "",
-            preserve_original_host: settings["preserve_original_host"]?.try(&.as_bool) || false,
-            verify_ssl: settings["verify_ssl"]?.try(&.as_bool) || true,
-            letsencrypt_enabled: settings["letsencrypt_enabled"]?.try(&.as_bool) || false,
-            letsencrypt_email: settings["letsencrypt_email"]?.try(&.as_s),
-            cert_file: settings["cert_file"]?.try(&.as_s),
-            key_file: settings["key_file"]?.try(&.as_s)
-          )
-          config.domains[domain.as_s] = domain_config
+          begin
+            # Validate required fields
+            default_upstream = settings["default_upstream"]?.try(&.as_s)
+            unless default_upstream
+              Log.warn { "Skipping domain '#{domain.as_s}': missing 'default_upstream'" }
+              next
+            end
+
+            # Parse WAF rules if present
+            waf_rules : WAFRulesConfigData? = nil
+            if waf_rules_node = settings["waf_rules"]?
+              enabled = [] of Int32
+              disabled = [] of Int32
+              if enabled_node = waf_rules_node["enabled"]?
+                enabled = enabled_node.as_a?.map(&.as_i) || [] of Int32
+              end
+              if disabled_node = waf_rules_node["disabled"]?
+                disabled = disabled_node.as_a?.map(&.as_i) || [] of Int32
+              end
+              waf_rules = WAFRulesConfigData.new(enabled: enabled, disabled: disabled)
+            end
+
+            # Safely extract letsencrypt_email (can be null/empty)
+            letsencrypt_email_val = settings["letsencrypt_email"]?.try(&.as_s?)
+            letsencrypt_email_val = nil if letsencrypt_email_val && letsencrypt_email_val.empty?
+
+            domain_config = DomainConfigData.new(
+              default_upstream: default_upstream,
+              upstream_host_header: settings["upstream_host_header"]?.try(&.as_s?) || "",
+              preserve_original_host: settings["preserve_original_host"]?.try(&.as_bool) || false,
+              verify_ssl: settings["verify_ssl"]?.try(&.as_bool) || true,
+              letsencrypt_enabled: settings["letsencrypt_enabled"]?.try(&.as_bool) || false,
+              letsencrypt_email: letsencrypt_email_val,
+              cert_file: settings["cert_file"]?.try(&.as_s?),
+              key_file: settings["key_file"]?.try(&.as_s?),
+              waf_threshold: settings["waf_threshold"]?.try(&.as_i) || 5,
+              waf_rules: waf_rules
+            )
+            config.domains[domain.as_s] = domain_config
+          rescue ex
+            Log.error { "Failed to parse domain '#{domain.as_s}': #{ex.message}" }
+            Log.debug { ex.backtrace.join("\n") if ex.backtrace }
+            next
+          end
         end
       end
 
@@ -237,9 +317,14 @@ module AdminPanel
           # Build new YAML content
           new_content = build_yaml_with_domain(yaml, domain, config)
 
-          # Backup current config
-          backup_path = "#{@waf_config_path}.bak"
-          File.copy(@waf_config_path, backup_path)
+          # Backup current config (to writable directory)
+          begin
+            backup_path = get_backup_path
+            File.copy(@waf_config_path, backup_path)
+            Log.debug { "Config backed up to: #{backup_path}" }
+          rescue ex
+            Log.warn { "Failed to create backup (continuing anyway): #{ex.message}" }
+          end
 
           # Write new config
           File.write(@waf_config_path, new_content)
@@ -262,9 +347,14 @@ module AdminPanel
 
           new_content = build_yaml_without_domain(yaml, domain)
 
-          # Backup current config
-          backup_path = "#{@waf_config_path}.bak"
-          File.copy(@waf_config_path, backup_path)
+          # Backup current config (to writable directory)
+          begin
+            backup_path = get_backup_path
+            File.copy(@waf_config_path, backup_path)
+            Log.debug { "Config backed up to: #{backup_path}" }
+          rescue ex
+            Log.warn { "Failed to create backup (continuing anyway): #{ex.message}" }
+          end
 
           # Write new config
           File.write(@waf_config_path, new_content)
@@ -292,9 +382,14 @@ module AdminPanel
 
           new_content = build_yaml_with_global_updates(yaml, mode, rate_limiting, geoip, ip_filtering)
 
-          # Backup
-          backup_path = "#{@waf_config_path}.bak"
-          File.copy(@waf_config_path, backup_path)
+          # Backup current config (to writable directory)
+          begin
+            backup_path = get_backup_path
+            File.copy(@waf_config_path, backup_path)
+            Log.debug { "Config backed up to: #{backup_path}" }
+          rescue ex
+            Log.warn { "Failed to create backup (continuing anyway): #{ex.message}" }
+          end
 
           File.write(@waf_config_path, new_content)
 
@@ -417,13 +512,28 @@ module AdminPanel
         str << pad << "  verify_ssl: #{config.verify_ssl}\n"
         if config.letsencrypt_enabled
           str << pad << "  letsencrypt_enabled: true\n"
-          str << pad << "  letsencrypt_email: #{config.letsencrypt_email}\n" if config.letsencrypt_email
+          if email = config.letsencrypt_email
+            str << pad << "  letsencrypt_email: \"#{email}\"\n" unless email.empty?
+          end
         end
         if config.cert_file
           str << pad << "  cert_file: #{config.cert_file}\n"
         end
         if config.key_file
           str << pad << "  key_file: #{config.key_file}\n"
+        end
+        # WAF configuration
+        str << pad << "  waf_threshold: #{config.waf_threshold}\n"
+        if waf_rules = config.waf_rules
+          if !waf_rules.enabled.empty? || !waf_rules.disabled.empty?
+            str << pad << "  waf_rules:\n"
+            if !waf_rules.enabled.empty?
+              str << pad << "    enabled: [#{waf_rules.enabled.join(", ")}]\n"
+            end
+            if !waf_rules.disabled.empty?
+              str << pad << "    disabled: [#{waf_rules.disabled.join(", ")}]\n"
+            end
+          end
         end
         str << "\n"
       end
@@ -481,6 +591,112 @@ module AdminPanel
       # For other sections, we'd need more complex YAML manipulation
       # This is a simplified version
       content
+    end
+
+    # Update domain WAF configuration (threshold and rules)
+    def update_domain_waf_config(domain : String, threshold : Int32, enabled_rules : Array(Int32), disabled_rules : Array(Int32)) : Bool
+      @mutex.synchronize do
+        begin
+          content = File.read(@waf_config_path)
+          lines = content.lines
+          
+          result = String.build do |str|
+            in_domain = false
+            domain_indent = 0
+            waf_section_written = false
+            i = 0
+
+            while i < lines.size
+              line = lines[i]
+              stripped = line.strip
+              line_indent = line.size - line.lstrip.size
+
+              # Domain başlangıcı
+              if stripped.starts_with?("\"#{domain}\":") || stripped.starts_with?("'#{domain}':")
+                in_domain = true
+                domain_indent = line_indent
+                str << line << "\n"
+                i += 1
+                next
+              end
+
+              if in_domain
+                # Domain içindeyiz, WAF alanlarını atla (yeniden yazacağız)
+                if stripped.starts_with?("waf_threshold:") || stripped.starts_with?("waf_rules:")
+                  # Bu satırı atla
+                  if stripped.starts_with?("waf_rules:")
+                    # waf_rules bloğunun tamamını atla
+                    i += 1
+                    while i < lines.size
+                      next_line = lines[i]
+                      next_indent = next_line.size - next_line.lstrip.size
+                      break if next_indent <= line_indent && !next_line.strip.empty?
+                      i += 1
+                    end
+                    next
+                  else
+                    i += 1
+                    next
+                  end
+                end
+
+                # Domain bitti mi?
+                if line_indent <= domain_indent && !stripped.empty? && i > 0
+                  # Domain sonu, WAF config yaz
+                  unless waf_section_written
+                    str << build_waf_config_yaml(threshold, enabled_rules, disabled_rules, domain_indent + 2)
+                    waf_section_written = true
+                  end
+                  in_domain = false
+                end
+              end
+
+              str << line << "\n"
+              i += 1
+
+              # Domain'in son satırı için WAF config yaz
+              if in_domain && i == lines.size && !waf_section_written
+                str << build_waf_config_yaml(threshold, enabled_rules, disabled_rules, domain_indent + 2)
+                waf_section_written = true
+              end
+            end
+          end
+
+          # Backup current config (to writable directory)
+          begin
+            backup_path = get_backup_path
+            File.copy(@waf_config_path, backup_path)
+            Log.debug { "Config backed up to: #{backup_path}" }
+          rescue ex
+            Log.warn { "Failed to create backup (continuing anyway): #{ex.message}" }
+          end
+
+          File.write(@waf_config_path, result)
+
+          Log.info { "Domain WAF config updated: #{domain}" }
+          true
+        rescue ex
+          Log.error { "Failed to update domain WAF config: #{ex.message}" }
+          false
+        end
+      end
+    end
+
+    private def build_waf_config_yaml(threshold : Int32, enabled_rules : Array(Int32), disabled_rules : Array(Int32), indent : Int32) : String
+      pad = " " * indent
+      String.build do |str|
+        str << pad << "waf_threshold: #{threshold}\n"
+        
+        if !enabled_rules.empty? || !disabled_rules.empty?
+          str << pad << "waf_rules:\n"
+          if !enabled_rules.empty?
+            str << pad << "  enabled: [#{enabled_rules.join(", ")}]\n"
+          end
+          if !disabled_rules.empty?
+            str << pad << "  disabled: [#{disabled_rules.join(", ")}]\n"
+          end
+        end
+      end
     end
   end
 end

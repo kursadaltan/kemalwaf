@@ -41,6 +41,9 @@ RUN crystal build --release --no-debug \
 # Stage 2: Build Admin Frontend
 FROM node:20-alpine AS admin-frontend-builder
 
+# Build argument for base path (can be overridden during build)
+ARG VITE_BASE_PATH=/
+
 WORKDIR /app
 
 # Copy admin-ui files
@@ -53,7 +56,10 @@ RUN mkdir -p ./admin/public
 WORKDIR /app/admin-ui
 RUN npm ci
 
-# Build frontend (output goes to ../admin/public)
+# Build frontend with dynamic base path
+# Default: "/" (standalone)
+# With --build-arg VITE_BASE_PATH=/admin/ for Nginx subpath
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
 # Stage 3: Build Admin Backend

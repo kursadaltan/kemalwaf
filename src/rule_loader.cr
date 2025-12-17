@@ -82,6 +82,14 @@ module KemalWAF
     property tags : Array(String)?
     property name : String?
 
+    # Scoring system - custom score overrides default_score
+    property score : Int32?           # Custom score for this rule (optional)
+    property default_score : Int32 = 1 # Default score if no custom score is set
+
+    # Source file for rule management
+    @[YAML::Field(ignore: true)]
+    property source_file : String?
+
     @[YAML::Field(ignore: true)]
     property compiled_regex : Regex?
 
@@ -89,8 +97,14 @@ module KemalWAF
       @variables
     end
 
-    def initialize(@id, @msg, @variables : Array(VariableSpec), @pattern, @action, @transforms, @operator, @paranoia_level, @severity, @category, @tags, @name)
+    # Get effective score (custom score or default)
+    def effective_score : Int32
+      @score || @default_score
+    end
+
+    def initialize(@id, @msg, @variables : Array(VariableSpec), @pattern, @action, @transforms, @operator, @paranoia_level, @severity, @category, @tags, @name, @score = nil, @default_score = 1)
       @compiled_regex = nil
+      @source_file = nil
       compile_pattern
     end
 
@@ -255,6 +269,7 @@ module KemalWAF
           rules_node.as_a.each do |rule_node|
             rule_yaml = rule_node.to_yaml
             rule = Rule.from_yaml(rule_yaml)
+            rule.source_file = file_path
             rule.compile_pattern
             new_rules << rule
             rule_count += 1

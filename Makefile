@@ -84,8 +84,14 @@ waf-tester:
 
 # Docker komutları
 docker-build:
-	@echo "🐳 Docker image build ediliyor (WAF + Admin Panel)..."
+	@echo "🐳 Docker image build ediliyor (WAF + Admin Panel - Standalone)..."
+	@echo "   Admin Panel: http://localhost:8888/"
 	docker-compose build
+
+docker-build-nginx:
+	@echo "🐳 Docker image build ediliyor (WAF + Admin Panel - Nginx Subpath)..."
+	@echo "   Admin Panel: https://yourdomain.com/admin/"
+	docker-compose build --build-arg VITE_BASE_PATH=/admin/
 
 up:
 	docker-compose up -d

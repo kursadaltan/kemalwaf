@@ -5,10 +5,12 @@ require "./database"
 require "./auth"
 require "./session"
 require "./config_manager"
+require "./rule_manager"
 require "./api/auth_api"
 require "./api/hosts_api"
 require "./api/config_api"
 require "./api/metrics_api"
+require "./api/rules_api"
 require "./middleware/auth_middleware"
 
 module AdminPanel
@@ -51,6 +53,7 @@ module AdminPanel
     getter auth : Auth
     getter session_manager : SessionManager
     getter config_manager : ConfigManager
+    getter rule_manager : RuleManager
 
     def initialize(config_path : String = "config/admin.yml")
       @config = load_config(config_path)
@@ -58,6 +61,7 @@ module AdminPanel
       @auth = Auth.new(@db)
       @session_manager = SessionManager.new(@db, parse_duration(@config.session_ttl))
       @config_manager = ConfigManager.new(@config.waf_config_path)
+      @rule_manager = RuleManager.new(get_rules_dir)
 
       setup_middleware
       setup_routes
@@ -73,6 +77,76 @@ module AdminPanel
         Log.warn { "Config file not found: #{path}, using defaults" }
         AdminConfig.new
       end
+    end
+
+    private def get_rules_dir : String
+      # Log current working directory and config path
+      cwd = Dir.current
+      Log.info { "Admin panel working directory: #{cwd}" }
+      Log.info { "WAF config path: #{@config.waf_config_path}" }
+      
+      # Try to read rules directory from waf.yml
+      if File.exists?(@config.waf_config_path)
+        begin
+          expanded_config_path = File.expand_path(@config.waf_config_path)
+          Log.info { "WAF config absolute path: #{expanded_config_path}" }
+          
+          content = File.read(@config.waf_config_path)
+          yaml = YAML.parse(content)
+          if waf_node = yaml["waf"]?
+            if rules_node = waf_node["rules"]?
+              if dir = rules_node["directory"]?.try(&.as_s)
+                Log.info { "Rules directory from waf.yml: #{dir}" }
+                
+                # Resolve relative path from waf config location
+                waf_dir = File.dirname(expanded_config_path)
+                expanded = File.expand_path(dir, waf_dir)
+                
+                Log.info { "Calculated rules directory: #{expanded} (from waf_dir=#{waf_dir}, dir=#{dir})" }
+                
+                # Verify directory exists, if not try alternative paths
+                if Dir.exists?(expanded)
+                  Log.info { "✓ Rules directory found: #{expanded}" }
+                  return expanded
+                else
+                  Log.warn { "✗ Rules directory does not exist: #{expanded}, trying alternatives..." }
+                  # Try ../rules relative to config
+                  alt_path = File.expand_path("../rules", waf_dir)
+                  Log.info { "Trying alternative path: #{alt_path}" }
+                  if Dir.exists?(alt_path)
+                    Log.info { "✓ Using alternative rules directory: #{alt_path}" }
+                    return alt_path
+                  end
+                  # Try rules/ relative to project root
+                  project_root = File.expand_path("../..", waf_dir)
+                  root_rules = File.join(project_root, "rules")
+                  Log.info { "Trying project root rules: #{root_rules}" }
+                  if Dir.exists?(root_rules)
+                    Log.info { "✓ Using project root rules directory: #{root_rules}" }
+                    return root_rules
+                  end
+                end
+              end
+            end
+          end
+        rescue ex
+          Log.error { "Failed to read rules directory from config: #{ex.message}" }
+          Log.error { ex.backtrace.join("\n") if ex.backtrace }
+          # Fall through to default
+        end
+      else
+        Log.warn { "WAF config file does not exist: #{@config.waf_config_path}" }
+      end
+      
+      # Default to ../rules relative to config file
+      if File.exists?(@config.waf_config_path)
+        default_dir = File.expand_path("../rules", File.dirname(File.expand_path(@config.waf_config_path)))
+      else
+        # Fallback: try ../rules from admin directory
+        default_dir = File.expand_path("../rules", cwd)
+      end
+      Log.info { "Using default rules directory: #{default_dir}" }
+      default_dir
     end
 
     private def parse_duration(duration : String) : Time::Span
@@ -117,6 +191,7 @@ module AdminPanel
       HostsAPI.setup(self)
       ConfigAPI.setup(self)
       MetricsAPI.setup(self)
+      RulesAPI.setup(self)
 
       # Health check
       get "/api/health" do |env|

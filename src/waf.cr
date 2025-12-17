@@ -971,12 +971,44 @@ before_all do |env|
     env.request.body = IO::Memory.new(body)
   end
 
-  # Evaluate rules
-  result = KemalWAF.evaluator.evaluate(env.request, body)
+  # Extract domain for domain-based evaluation
+  domain = WAFHelpers.extract_domain(env.request)
+  domain_eval_config : KemalWAF::DomainEvalConfig? = nil
+
+  # Build domain evaluation config if domain config exists
+  if domain && (config_loader = KemalWAF.config_loader)
+    if domain_config = config_loader.get_domain_config(domain)
+      # Build DomainEvalConfig from domain config
+      enabled_rules = [] of Int32
+      disabled_rules = [] of Int32
+      
+      if waf_rules = domain_config.waf_rules
+        enabled_rules = waf_rules.enabled
+        disabled_rules = waf_rules.disabled
+      end
+      
+      domain_eval_config = KemalWAF::DomainEvalConfig.new(
+        threshold: domain_config.waf_threshold,
+        enabled_rules: enabled_rules,
+        disabled_rules: disabled_rules
+      )
+      
+      Log.debug { "Domain '#{domain}' WAF config: threshold=#{domain_config.waf_threshold}" }
+    end
+  end
+
+  # Evaluate rules with domain-aware scoring
+  result = KemalWAF.evaluator.evaluate_with_domain(env.request, body, domain_eval_config)
   duration = Time.monotonic - start_time
 
   if result.blocked
-    Log.info { "WAF blocked: #{result.message}" }
+    # Log matched rules and scores for debugging
+    if !result.matched_rules.empty?
+      matched_info = result.matched_rules.map { |r| "#{r.rule_id}(#{r.score})" }.join(", ")
+      Log.info { "WAF blocked: #{result.message} | Rules: #{matched_info} | Total: #{result.total_score}/#{result.threshold}" }
+    else
+      Log.info { "WAF blocked: #{result.message}" }
+    end
     KemalWAF.metrics.increment_blocked
 
     # Write structured log (non-blocking)
@@ -992,7 +1024,13 @@ before_all do |env|
     env.response.status_code = 403
     env.response.content_type = "text/html; charset=utf-8"
 
-    html = WAFRenderer.render_403(result.rule_id.to_s, result.message, KemalWAF::OBSERVE_MODE)
+    # Include score info in the message
+    block_message = result.message
+    if result.total_score > 0
+      block_message = "#{result.message} (Score: #{result.total_score}/#{result.threshold})"
+    end
+    
+    html = WAFRenderer.render_403(result.rule_id.to_s, block_message, KemalWAF::OBSERVE_MODE)
     env.response.print(html)
     # Mark as blocked by WAF
     env.set("waf_blocked", true)
@@ -1003,6 +1041,12 @@ before_all do |env|
     KemalWAF.metrics.increment_observed
     # Write structured log (non-blocking)
     KemalWAF.structured_logger.log_request(env.request, result, duration, request_id, Time.utc)
+    
+    # Log observed matches with scores
+    if !result.matched_rules.empty?
+      matched_info = result.matched_rules.map { |r| "#{r.rule_id}(#{r.score})" }.join(", ")
+      Log.debug { "[OBSERVE] Rules matched: #{matched_info} | Total: #{result.total_score}/#{result.threshold}" }
+    end
   end
 
   # Request timing already recorded (request_start_time_ns)

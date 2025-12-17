@@ -15,7 +15,8 @@ import {
   ExternalLink,
   Trash2,
   Edit,
-  MoreVertical
+  MoreVertical,
+  FileText
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,7 @@ import { api, ProxyHost } from '@/lib/api'
 import { formatNumber, formatUptime } from '@/lib/utils'
 import { ProxyHostModal } from '@/components/ProxyHostModal'
 import { GlobalSettingsModal } from '@/components/GlobalSettingsModal'
+import { RulesPage } from '@/pages/RulesPage'
 
 interface StatsCardProps {
   icon: React.ReactNode
@@ -181,6 +183,7 @@ export function DashboardPage() {
   const [isHostModalOpen, setIsHostModalOpen] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
   const [editingHost, setEditingHost] = useState<ProxyHost | null>(null)
+  const [showRulesPage, setShowRulesPage] = useState(false)
 
   // Fetch data
   const { data: stats } = useQuery({
@@ -249,6 +252,11 @@ export function DashboardPage() {
     setEditingHost(null)
   }
 
+  // Show Rules Page when toggled
+  if (showRulesPage) {
+    return <RulesPage onBack={() => setShowRulesPage(false)} />
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -264,6 +272,14 @@ export function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowRulesPage(true)}
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              Global Rules
+            </Button>
             <Button
               variant="ghost"
               size="sm"

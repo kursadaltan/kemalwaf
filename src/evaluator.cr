@@ -49,6 +49,18 @@ module KemalWAF
   MAX_COOKIES         =   32
   BUFFER_POOL_SIZE    =  256
 
+  # Matched rule info for scoring
+  struct MatchedRuleInfo
+    property rule_id : Int32
+    property message : String
+    property score : Int32
+    property matched_variable : String
+    property matched_value : String
+
+    def initialize(@rule_id, @message, @score, @matched_variable, @matched_value)
+    end
+  end
+
   # İstek değerlendirme sonucu
   struct EvaluationResult
     property blocked : Bool
@@ -57,8 +69,45 @@ module KemalWAF
     property message : String?
     property matched_variable : String?
     property matched_value : String?
+    property total_score : Int32
+    property matched_rules : Array(MatchedRuleInfo)
+    property threshold : Int32
 
-    def initialize(@blocked, @rule_id = nil, @message = nil, @observed = false, @matched_variable = nil, @matched_value = nil)
+    def initialize(
+      @blocked,
+      @rule_id = nil,
+      @message = nil,
+      @observed = false,
+      @matched_variable = nil,
+      @matched_value = nil,
+      @total_score = 0,
+      @matched_rules = [] of MatchedRuleInfo,
+      @threshold = 5
+    )
+    end
+  end
+
+  # Domain WAF configuration for evaluation
+  struct DomainEvalConfig
+    property threshold : Int32
+    property enabled_rules : Array(Int32)
+    property disabled_rules : Array(Int32)
+
+    def initialize(
+      @threshold : Int32 = 5,
+      @enabled_rules : Array(Int32) = [] of Int32,
+      @disabled_rules : Array(Int32) = [] of Int32
+    )
+    end
+
+    # Check if a rule is enabled for this domain
+    def rule_enabled?(rule_id : Int32) : Bool
+      # If enabled list is not empty, only those rules are active
+      if !@enabled_rules.empty?
+        return @enabled_rules.includes?(rule_id)
+      end
+      # Otherwise, all rules except disabled ones are active
+      !@disabled_rules.includes?(rule_id)
     end
   end
 
@@ -312,6 +361,7 @@ module KemalWAF
       @snapshot_pool = VariableSnapshotPool.new(BUFFER_POOL_SIZE)
     end
 
+    # Original evaluate method (backward compatible - blocks on first deny rule match)
     def evaluate(request : HTTP::Request, body : String?) : EvaluationResult
       snapshot = @snapshot_pool.acquire
 
@@ -324,6 +374,25 @@ module KemalWAF
       end
     end
 
+    # New: Domain-aware evaluate with scoring system
+    def evaluate_with_domain(request : HTTP::Request, body : String?, domain_config : DomainEvalConfig?) : EvaluationResult
+      snapshot = @snapshot_pool.acquire
+
+      begin
+        snapshot.populate(request, body, @body_limit)
+        
+        if domain_config
+          result = evaluate_rules_with_scoring(snapshot, domain_config)
+        else
+          result = evaluate_rules(snapshot)
+        end
+        result
+      ensure
+        @snapshot_pool.release(snapshot)
+      end
+    end
+
+    # Original rule evaluation (backward compatible)
     private def evaluate_rules(snapshot : VariableSnapshot) : EvaluationResult
       @rule_loader.rules.each do |rule|
         match_result = match_rule_branchless?(rule, snapshot)
@@ -357,6 +426,93 @@ module KemalWAF
       end
 
       EvaluationResult.new(blocked: false)
+    end
+
+    # New: Scoring-based rule evaluation
+    private def evaluate_rules_with_scoring(snapshot : VariableSnapshot, domain_config : DomainEvalConfig) : EvaluationResult
+      matched_rules = [] of MatchedRuleInfo
+      total_score = 0
+      threshold = domain_config.threshold
+
+      @rule_loader.rules.each do |rule|
+        # Skip rules that are not enabled for this domain
+        next unless domain_config.rule_enabled?(rule.id)
+
+        match_result = match_rule_branchless?(rule, snapshot)
+        if match_result
+          matched_var, matched_val = match_result
+          rule_score = rule.effective_score
+          
+          Log.info { "Rule match: ID=#{rule.id}, Msg=#{rule.msg}, Score=#{rule_score}" }
+
+          if rule.action == "deny"
+            total_score += rule_score
+            matched_rules << MatchedRuleInfo.new(
+              rule_id: rule.id,
+              message: rule.msg,
+              score: rule_score,
+              matched_variable: matched_var,
+              matched_value: matched_val
+            )
+          end
+        end
+      end
+
+      # Check if total score exceeds threshold
+      if total_score >= threshold
+        if @observe_mode
+          Log.warn { "[OBSERVE MODE] Score threshold exceeded (#{total_score}/#{threshold}) but not blocked" }
+          # Return first matched rule for compatibility
+          first_match = matched_rules.first?
+          return EvaluationResult.new(
+            blocked: false,
+            rule_id: first_match.try(&.rule_id),
+            message: "Score threshold exceeded: #{total_score}/#{threshold}",
+            observed: true,
+            matched_variable: first_match.try(&.matched_variable),
+            matched_value: first_match.try(&.matched_value),
+            total_score: total_score,
+            matched_rules: matched_rules,
+            threshold: threshold
+          )
+        else
+          Log.warn { "Request blocked: Score threshold exceeded (#{total_score}/#{threshold})" }
+          first_match = matched_rules.first?
+          return EvaluationResult.new(
+            blocked: true,
+            rule_id: first_match.try(&.rule_id),
+            message: "Score threshold exceeded: #{total_score}/#{threshold}",
+            matched_variable: first_match.try(&.matched_variable),
+            matched_value: first_match.try(&.matched_value),
+            total_score: total_score,
+            matched_rules: matched_rules,
+            threshold: threshold
+          )
+        end
+      end
+
+      # Not blocked but may have matches
+      if !matched_rules.empty?
+        first_match = matched_rules.first
+        return EvaluationResult.new(
+          blocked: false,
+          rule_id: first_match.rule_id,
+          message: "Matched rules but below threshold: #{total_score}/#{threshold}",
+          observed: true,
+          matched_variable: first_match.matched_variable,
+          matched_value: first_match.matched_value,
+          total_score: total_score,
+          matched_rules: matched_rules,
+          threshold: threshold
+        )
+      end
+
+      EvaluationResult.new(
+        blocked: false,
+        total_score: 0,
+        matched_rules: [] of MatchedRuleInfo,
+        threshold: threshold
+      )
     end
 
     # =============================================================================

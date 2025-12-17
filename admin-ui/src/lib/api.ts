@@ -1,4 +1,21 @@
-const API_BASE = import.meta.env.DEV ? 'http://localhost:8888/api' : '/api'
+// Dynamic API base URL
+// Development: direct to backend (localhost:8888)
+// Production: relative to current base path
+// If base is "/admin/", API will be at "/admin/api"
+// If base is "/", API will be at "/api"
+const getApiBase = () => {
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8888/api'
+  }
+  
+  // Get base path from vite config (e.g., "/" or "/admin/")
+  const base = import.meta.env.BASE_URL || '/'
+  // Ensure base ends with /
+  const normalizedBase = base.endsWith('/') ? base : base + '/'
+  return `${normalizedBase}api`
+}
+
+const API_BASE = getApiBase()
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -147,6 +164,81 @@ export interface CreateHostData {
   key_file?: string
 }
 
+// WAF Rule Types
+export interface VariableSpec {
+  type: string
+  names?: string[]
+}
+
+export interface Rule {
+  id: number
+  name?: string
+  msg: string
+  pattern?: string
+  action: string
+  operator?: string
+  severity?: string
+  category?: string
+  paranoia_level?: number
+  tags?: string[]
+  transforms?: string[]
+  variables?: VariableSpec[]
+  score?: number
+  default_score: number
+  source_file?: string
+}
+
+export interface RulesResponse {
+  rules: Rule[]
+  total: number
+  categories: string[]
+}
+
+export interface RuleFilesResponse {
+  files: Array<{
+    file: string
+    count: number
+    rules: number[]
+  }>
+}
+
+export interface DomainRulesConfig {
+  domain: string
+  threshold: number
+  enabled_rules: number[]
+  disabled_rules: number[]
+  all_rules: Array<{
+    id: number
+    name: string
+    category?: string
+    score: number
+  }>
+}
+
+export interface CreateRuleData {
+  id: number
+  name?: string
+  msg: string
+  pattern?: string
+  action: string
+  operator?: string
+  severity?: string
+  category?: string
+  paranoia_level?: number
+  tags?: string[]
+  transforms?: string[]
+  variables?: VariableSpec[]
+  score?: number
+  default_score?: number
+  target_file?: string
+}
+
+export interface UpdateDomainRulesData {
+  threshold?: number
+  enabled_rules?: number[]
+  disabled_rules?: number[]
+}
+
 // API functions
 export const api = {
   // Auth
@@ -246,6 +338,68 @@ export const api = {
   getStats: () => request<Stats>('/stats'),
   
   getMetrics: () => request<Record<string, unknown>>('/metrics'),
+
+  // WAF Rules
+  getRules: (category?: string, severity?: string) => {
+    const params = new URLSearchParams()
+    if (category) params.append('category', category)
+    if (severity) params.append('severity', severity)
+    const query = params.toString()
+    return request<RulesResponse>(`/rules${query ? `?${query}` : ''}`)
+  },
+
+  getRule: (id: number) => request<Rule>(`/rules/${id}`),
+
+  createRule: (data: CreateRuleData) =>
+    request<{ success: boolean; message: string; id: number }>('/rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateRule: (id: number, data: Partial<CreateRuleData>) =>
+    request<{ success: boolean; message: string }>(`/rules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteRule: (id: number) =>
+    request<{ success: boolean; message: string }>(`/rules/${id}`, {
+      method: 'DELETE',
+    }),
+
+  reloadRules: () =>
+    request<{ success: boolean; message: string; count: number }>('/rules/reload', {
+      method: 'POST',
+    }),
+
+  getRuleFiles: () => request<RuleFilesResponse>('/rules/files'),
+
+  // Domain WAF Configuration
+  getDomainRules: (domain: string) =>
+    request<DomainRulesConfig>(`/rules/domains/${encodeURIComponent(domain)}`),
+
+  updateDomainRules: (domain: string, data: UpdateDomainRulesData) =>
+    request<{ success: boolean; message: string }>(
+      `/rules/domains/${encodeURIComponent(domain)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }
+    ),
+
+  getDomainThreshold: (domain: string) =>
+    request<{ domain: string; threshold: number }>(
+      `/rules/domains/${encodeURIComponent(domain)}/threshold`
+    ),
+
+  updateDomainThreshold: (domain: string, threshold: number) =>
+    request<{ success: boolean; message: string }>(
+      `/rules/domains/${encodeURIComponent(domain)}/threshold`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ threshold }),
+      }
+    ),
 }
 
 export { ApiError }

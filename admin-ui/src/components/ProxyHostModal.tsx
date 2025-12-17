@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Globe, Link, Lock, Settings2, ChevronDown, Loader2 } from 'lucide-react'
+import { Globe, Link, Lock, Settings2, ChevronDown, Loader2, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +26,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { api, ProxyHost, CreateHostData, ApiError } from '@/lib/api'
+import { DomainRulesConfig } from '@/components/DomainRulesConfig'
 
 interface ProxyHostModalProps {
   isOpen: boolean
@@ -51,6 +52,7 @@ export function ProxyHostModal({ isOpen, onClose, host }: ProxyHostModalProps) {
   
   // Advanced settings
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showWafSettings, setShowWafSettings] = useState(false)
 
   // Reset form when modal opens/closes or host changes
   useEffect(() => {
@@ -113,6 +115,12 @@ export function ProxyHostModal({ isOpen, onClose, host }: ProxyHostModalProps) {
       return
     }
 
+    // Validate Let's Encrypt email if SSL is enabled and type is letsencrypt
+    if (sslEnabled && sslType === 'letsencrypt' && !sslEmail?.trim()) {
+      toast.error('Email address is required for Let\'s Encrypt certificates')
+      return
+    }
+
     const data: CreateHostData = {
       domain,
       upstream_url: upstreamUrl,
@@ -120,7 +128,7 @@ export function ProxyHostModal({ isOpen, onClose, host }: ProxyHostModalProps) {
       preserve_host: preserveHost,
       verify_ssl: verifySsl,
       ssl_type: sslEnabled ? sslType : 'none',
-      ssl_email: sslType === 'letsencrypt' ? sslEmail : undefined,
+      ssl_email: sslType === 'letsencrypt' ? sslEmail?.trim() : undefined,
     }
 
     if (isEditing) {
@@ -246,6 +254,7 @@ export function ProxyHostModal({ isOpen, onClose, host }: ProxyHostModalProps) {
                       value={sslEmail}
                       onChange={(e) => setSslEmail(e.target.value)}
                       disabled={isPending}
+                      required
                     />
                     <p className="text-xs text-muted-foreground">
                       Required for Let's Encrypt certificate issuance and renewal notices
@@ -310,6 +319,33 @@ export function ProxyHostModal({ isOpen, onClose, host }: ProxyHostModalProps) {
               </div>
             </CollapsibleContent>
           </Collapsible>
+
+          {/* WAF Settings - Only show for editing existing hosts */}
+          {isEditing && (
+            <>
+              <Separator />
+              <Collapsible open={showWafSettings} onOpenChange={setShowWafSettings}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-between"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      WAF Rules & Scoring
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${showWafSettings ? 'rotate-180' : ''}`}
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4">
+                  <DomainRulesConfig domain={domain} />
+                </CollapsibleContent>
+              </Collapsible>
+            </>
+          )}
 
           <Separator />
 

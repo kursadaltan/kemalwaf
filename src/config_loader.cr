@@ -2,6 +2,32 @@ require "yaml"
 require "uri"
 
 module KemalWAF
+  # Domain bazlı WAF kural yapılandırması
+  struct DomainWAFRulesConfig
+    include YAML::Serializable
+
+    # Aktif kural ID'leri (boş ise tüm kurallar aktif)
+    property enabled : Array(Int32) = [] of Int32
+    # Pasif kural ID'leri (enabled boş ise bu kurallar hariç tümü aktif)
+    property disabled : Array(Int32) = [] of Int32
+
+    def initialize(
+      @enabled : Array(Int32) = [] of Int32,
+      @disabled : Array(Int32) = [] of Int32,
+    )
+    end
+
+    # Kural ID'sinin aktif olup olmadığını kontrol et
+    def rule_enabled?(rule_id : Int32) : Bool
+      # enabled listesi doluysa sadece o listedeki kurallar aktif
+      if !@enabled.empty?
+        return @enabled.includes?(rule_id)
+      end
+      # enabled listesi boşsa, disabled'da olmayan tüm kurallar aktif
+      !@disabled.includes?(rule_id)
+    end
+  end
+
   # Domain yapılandırması
   struct DomainConfig
     include YAML::Serializable
@@ -17,6 +43,10 @@ module KemalWAF
     property letsencrypt_enabled : Bool = false # Bu domain için Let's Encrypt otomatik sertifika
     property letsencrypt_email : String? = nil  # Let's Encrypt için e-posta adresi
 
+    # WAF kural yapılandırması
+    property waf_threshold : Int32 = 5                           # Engelleme eşik değeri
+    property waf_rules : DomainWAFRulesConfig? = nil             # Domain bazlı kural aktivasyonu
+
     def initialize(
       @default_upstream : String,
       @upstream_host_header : String = "",
@@ -26,6 +56,8 @@ module KemalWAF
       @key_file : String? = nil,
       @letsencrypt_enabled : Bool = false,
       @letsencrypt_email : String? = nil,
+      @waf_threshold : Int32 = 5,
+      @waf_rules : DomainWAFRulesConfig? = nil,
     )
     end
 
@@ -37,6 +69,15 @@ module KemalWAF
     # Domain için Let's Encrypt aktif mi?
     def use_letsencrypt? : Bool
       @letsencrypt_enabled && !has_custom_cert?
+    end
+
+    # Kural ID'sinin bu domain için aktif olup olmadığını kontrol et
+    def rule_enabled?(rule_id : Int32) : Bool
+      if rules_config = @waf_rules
+        rules_config.rule_enabled?(rule_id)
+      else
+        true # waf_rules tanımlı değilse tüm kurallar aktif
+      end
     end
   end
 

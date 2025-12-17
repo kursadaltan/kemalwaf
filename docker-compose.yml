@@ -10,11 +10,11 @@ services:
       - .env
     volumes:
       - ./config/waf.yml:/app/config/waf.yml
-      - ./rules:/app/rules:ro
+      - ./rules:/app/rules
       - waf-certs:/app/config/certs
       - ./logs:/app/logs
-      - ./config/ip_whitelist.txt:/app/config/ip_whitelist.txt:ro
-      - ./config/ip_blacklist.txt:/app/config/ip_blacklist.txt:ro
+      - ./config/ip_whitelist.txt:/app/config/ip_whitelist.txt
+      - ./config/ip_blacklist.txt:/app/config/ip_blacklist.txt
       - admin-data:/app/admin/data
       # - ./config/Maxmind/GeoLite2-Country.mmdb:/app/config/Maxmind/GeoLite2-Country.mmdb:ro
     networks:
