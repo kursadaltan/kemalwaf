@@ -153,15 +153,15 @@ module AdminPanel
       # Use admin/data directory for backups (writable)
       # Try multiple possible locations
       possible_dirs = [
-        "data",                                    # Relative to admin directory
-        File.expand_path("admin/data", Dir.current), # From project root
+        "data",                                                      # Relative to admin directory
+        File.expand_path("admin/data", Dir.current),                 # From project root
         File.expand_path("../logs", File.dirname(@waf_config_path)), # Near config
-        "/app/admin/data",                         # Docker container path
-        "/app/logs",                               # Docker logs path
+        "/app/admin/data",                                           # Docker container path
+        "/app/logs",                                                 # Docker logs path
       ]
-      
+
       @backup_dir = possible_dirs.find { |dir| Dir.exists?(dir) } || "data"
-      
+
       # Create backup directory if it doesn't exist
       begin
         Dir.mkdir_p(@backup_dir) unless Dir.exists?(@backup_dir)
@@ -599,7 +599,7 @@ module AdminPanel
         begin
           content = File.read(@waf_config_path)
           lines = content.lines
-          
+
           result = String.build do |str|
             in_domain = false
             domain_indent = 0
@@ -686,7 +686,7 @@ module AdminPanel
       pad = " " * indent
       String.build do |str|
         str << pad << "waf_threshold: #{threshold}\n"
-        
+
         if !enabled_rules.empty? || !disabled_rules.empty?
           str << pad << "waf_rules:\n"
           if !enabled_rules.empty?

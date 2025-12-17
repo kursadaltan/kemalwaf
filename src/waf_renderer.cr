@@ -36,5 +36,3 @@ module WAFRenderer
     ECR.render("#{__DIR__}/views/429.ecr")
   end
 end
-
-

@@ -44,8 +44,8 @@ module KemalWAF
     property letsencrypt_email : String? = nil  # Let's Encrypt için e-posta adresi
 
     # WAF kural yapılandırması
-    property waf_threshold : Int32 = 5                           # Engelleme eşik değeri
-    property waf_rules : DomainWAFRulesConfig? = nil             # Domain bazlı kural aktivasyonu
+    property waf_threshold : Int32 = 5               # Engelleme eşik değeri
+    property waf_rules : DomainWAFRulesConfig? = nil # Domain bazlı kural aktivasyonu
 
     def initialize(
       @default_upstream : String,

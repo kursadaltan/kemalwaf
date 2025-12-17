@@ -11,7 +11,7 @@ module AdminPanel
         next unless user
 
         rules = app.rule_manager.get_rules
-        
+
         # Optional filtering
         if category = env.params.query["category"]?
           rules = rules.select { |r| r.category == category }
@@ -93,7 +93,7 @@ module AdminPanel
           )
 
           target_file = data["target_file"]?.try(&.as_s)
-          
+
           unless app.rule_manager.create_rule(rule, target_file)
             env.response.status_code = 500
             next {error: "Failed to create rule"}.to_json
@@ -224,7 +224,7 @@ module AdminPanel
         next unless user
 
         rules = app.rule_manager.reload
-        
+
         # Audit log
         app.db.log_audit(
           user.id,
@@ -277,7 +277,7 @@ module AdminPanel
 
         # Get WAF configuration from domain
         all_rules = app.rule_manager.get_rules
-        
+
         # Parse waf_rules from domain config if available
         waf_config = get_domain_waf_config(app, domain)
 
@@ -298,7 +298,7 @@ module AdminPanel
         next unless user
 
         domain = URI.decode(env.params.url["domain"])
-        
+
         unless app.config_manager.get_domain(domain)
           env.response.status_code = 404
           next {error: "Domain not found"}.to_json
@@ -343,7 +343,7 @@ module AdminPanel
         next unless user
 
         domain = URI.decode(env.params.url["domain"])
-        
+
         unless app.config_manager.get_domain(domain)
           env.response.status_code = 404
           next {error: "Domain not found"}.to_json
@@ -365,7 +365,7 @@ module AdminPanel
         next unless user
 
         domain = URI.decode(env.params.url["domain"])
-        
+
         unless app.config_manager.get_domain(domain)
           env.response.status_code = 404
           next {error: "Domain not found"}.to_json
@@ -376,7 +376,7 @@ module AdminPanel
           data = JSON.parse(body)
 
           threshold = data["threshold"]?.try(&.as_i)
-          
+
           unless threshold
             env.response.status_code = 400
             next {error: "Threshold is required"}.to_json
@@ -384,7 +384,7 @@ module AdminPanel
 
           # Get current config and update threshold only
           waf_config = get_domain_waf_config(app, domain)
-          
+
           unless app.config_manager.update_domain_waf_config(domain, threshold, waf_config[:enabled], waf_config[:disabled])
             env.response.status_code = 500
             next {error: "Failed to update threshold"}.to_json
@@ -431,20 +431,20 @@ module AdminPanel
       # Read from config file directly to get latest values
       config = app.config_manager.read_config
       domain_config = config.domains[domain]?
-      
+
       if domain_config
         # Try to get waf_threshold and waf_rules from raw YAML
         content = File.read(app.config_manager.waf_config_path)
         yaml = YAML.parse(content)
         waf_node = yaml["waf"]?
-        
+
         if waf_node && (domains_node = waf_node["domains"]?)
           if domain_settings = domains_node[domain]?
             threshold = domain_settings["waf_threshold"]?.try(&.as_i) || 5
-            
+
             enabled = [] of Int32
             disabled = [] of Int32
-            
+
             if waf_rules = domain_settings["waf_rules"]?
               if enabled_node = waf_rules["enabled"]?
                 enabled = enabled_node.as_a.map(&.as_i)
@@ -453,12 +453,12 @@ module AdminPanel
                 disabled = disabled_node.as_a.map(&.as_i)
               end
             end
-            
+
             return {threshold: threshold, enabled: enabled, disabled: disabled}
           end
         end
       end
-      
+
       {threshold: 5, enabled: [] of Int32, disabled: [] of Int32}
     end
   end

@@ -82,7 +82,7 @@ module KemalWAF
       @matched_value = nil,
       @total_score = 0,
       @matched_rules = [] of MatchedRuleInfo,
-      @threshold = 5
+      @threshold = 5,
     )
     end
   end
@@ -96,7 +96,7 @@ module KemalWAF
     def initialize(
       @threshold : Int32 = 5,
       @enabled_rules : Array(Int32) = [] of Int32,
-      @disabled_rules : Array(Int32) = [] of Int32
+      @disabled_rules : Array(Int32) = [] of Int32,
     )
     end
 
@@ -380,7 +380,7 @@ module KemalWAF
 
       begin
         snapshot.populate(request, body, @body_limit)
-        
+
         if domain_config
           result = evaluate_rules_with_scoring(snapshot, domain_config)
         else
@@ -442,7 +442,7 @@ module KemalWAF
         if match_result
           matched_var, matched_val = match_result
           rule_score = rule.effective_score
-          
+
           Log.info { "Rule match: ID=#{rule.id}, Msg=#{rule.msg}, Score=#{rule_score}" }
 
           if rule.action == "deny"

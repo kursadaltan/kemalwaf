@@ -83,7 +83,7 @@ module KemalWAF
     property name : String?
 
     # Scoring system - custom score overrides default_score
-    property score : Int32?           # Custom score for this rule (optional)
+    property score : Int32?            # Custom score for this rule (optional)
     property default_score : Int32 = 1 # Default score if no custom score is set
 
     # Source file for rule management

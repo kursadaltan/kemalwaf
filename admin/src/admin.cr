@@ -84,26 +84,26 @@ module AdminPanel
       cwd = Dir.current
       Log.info { "Admin panel working directory: #{cwd}" }
       Log.info { "WAF config path: #{@config.waf_config_path}" }
-      
+
       # Try to read rules directory from waf.yml
       if File.exists?(@config.waf_config_path)
         begin
           expanded_config_path = File.expand_path(@config.waf_config_path)
           Log.info { "WAF config absolute path: #{expanded_config_path}" }
-          
+
           content = File.read(@config.waf_config_path)
           yaml = YAML.parse(content)
           if waf_node = yaml["waf"]?
             if rules_node = waf_node["rules"]?
               if dir = rules_node["directory"]?.try(&.as_s)
                 Log.info { "Rules directory from waf.yml: #{dir}" }
-                
+
                 # Resolve relative path from waf config location
                 waf_dir = File.dirname(expanded_config_path)
                 expanded = File.expand_path(dir, waf_dir)
-                
+
                 Log.info { "Calculated rules directory: #{expanded} (from waf_dir=#{waf_dir}, dir=#{dir})" }
-                
+
                 # Verify directory exists, if not try alternative paths
                 if Dir.exists?(expanded)
                   Log.info { "✓ Rules directory found: #{expanded}" }
@@ -137,7 +137,7 @@ module AdminPanel
       else
         Log.warn { "WAF config file does not exist: #{@config.waf_config_path}" }
       end
-      
+
       # Default to ../rules relative to config file
       if File.exists?(@config.waf_config_path)
         default_dir = File.expand_path("../rules", File.dirname(File.expand_path(@config.waf_config_path)))

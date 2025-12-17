@@ -20,7 +20,7 @@ module AdminPanel
     property tags : Array(String)?
     property transforms : Array(String)?
     property variables : Array(VariableSpecData)?
-    property score : Int32?           # Custom score (optional)
+    property score : Int32?            # Custom score (optional)
     property default_score : Int32 = 1 # Default score
 
     # Source file (set after loading, not serialized to YAML)
@@ -104,11 +104,11 @@ module AdminPanel
       @mutex = Mutex.new
       @rules_cache = nil
       @cache_mtime = nil
-      
+
       # Log rules directory and verify it exists
       expanded_dir = File.expand_path(@rules_dir)
       Log.info { "RuleManager initialized with rules directory: #{expanded_dir}" }
-      
+
       unless Dir.exists?(expanded_dir)
         Log.warn { "Rules directory does not exist: #{expanded_dir}" }
       else
@@ -123,9 +123,9 @@ module AdminPanel
       @mutex.synchronize do
         rules = [] of RuleData
         expanded_dir = File.expand_path(@rules_dir)
-        
+
         Log.info { "Loading rules from directory: #{expanded_dir}" }
-        
+
         unless Dir.exists?(expanded_dir)
           Log.error { "Rules directory does not exist: #{expanded_dir}" }
           @rules_cache = rules
@@ -144,7 +144,7 @@ module AdminPanel
               Log.debug { "Skipping #{file_path}: no 'rules' key or not a Hash" }
               next
             end
-            
+
             rules_node = yaml_data["rules"]
             unless rules_node.raw.is_a?(Array)
               Log.debug { "Skipping #{file_path}: 'rules' is not an Array" }
@@ -194,7 +194,7 @@ module AdminPanel
         begin
           # Determine target file
           file_path = target_file || File.join(@rules_dir, "custom-rules.yaml")
-          
+
           # Ensure directory exists
           FileUtils.mkdir_p(File.dirname(file_path))
 
@@ -216,7 +216,7 @@ module AdminPanel
 
           # Add new rule
           new_rule_yaml = build_rule_yaml(rule)
-          
+
           # Write to file
           write_rules_file(file_path, existing_rules, new_rule_yaml)
 
@@ -251,7 +251,7 @@ module AdminPanel
           # Read and update the file
           content = File.read(source_file)
           yaml_data = YAML.parse(content)
-          
+
           rules_array = yaml_data["rules"]?.try(&.as_a) || ([] of YAML::Any)
           updated = false
 
@@ -300,7 +300,7 @@ module AdminPanel
           # Read and update the file
           content = File.read(source_file)
           yaml_data = YAML.parse(content)
-          
+
           rules_array = yaml_data["rules"]?.try(&.as_a) || ([] of YAML::Any)
           new_rules = rules_array.reject { |r| r["id"]?.try(&.as_i) == id }
 
@@ -361,12 +361,12 @@ module AdminPanel
         variables = parse_variables(node["variables"]?)
 
         # Helper to safely extract string values (handles null)
-        safe_string = ->(key : String) { 
+        safe_string = ->(key : String) {
           val = node[key]?
           return nil unless val
           val.nil? ? nil : val.as_s?
         }
-        
+
         # Helper to safely extract array values
         safe_array = ->(key : String) {
           val = node[key]?
@@ -394,7 +394,7 @@ module AdminPanel
           default_score: node["default_score"]?.try(&.as_i) || 1,
           source_file: source_file
         )
-        
+
         Log.debug { "Parsed rule ID=#{id} from #{source_file}" }
         rule
       rescue ex
@@ -437,7 +437,7 @@ module AdminPanel
         str << "    action: \"#{escape_yaml(rule.action)}\"\n"
         str << "    score: #{rule.score}\n" if rule.score
         str << "    default_score: #{rule.default_score}\n" if rule.default_score != 1
-        
+
         if vars = rule.variables
           str << "    variables:\n"
           vars.each do |v|
@@ -508,11 +508,11 @@ module AdminPanel
       File.open(file_path, "w") do |file|
         file << "---\n"
         file << "rules:\n"
-        
+
         existing_rules.each do |rule|
           file << rule.to_yaml.gsub(/^---\n/, "").gsub(/^/, "  ")
         end
-        
+
         file << new_rule_yaml
       end
     end
@@ -520,7 +520,7 @@ module AdminPanel
     private def write_rules_file_from_any(file_path : String, rules : Array(YAML::Any))
       root_hash = {} of YAML::Any => YAML::Any
       root_hash[YAML::Any.new("rules")] = YAML::Any.new(rules)
-      
+
       File.write(file_path, YAML::Any.new(root_hash).to_yaml)
     end
 
