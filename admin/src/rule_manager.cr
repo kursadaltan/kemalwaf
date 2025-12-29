@@ -527,5 +527,161 @@ module AdminPanel
     private def escape_yaml(str : String) : String
       str.gsub("\\", "\\\\").gsub("\"", "\\\"")
     end
+
+    # Domain adını sanitize et (dosya adı için)
+    private def sanitize_domain(domain : String) : String
+      domain.gsub(/[^a-zA-Z0-9\-]/, "-").downcase
+    end
+
+    # Domain için custom rule dosyası yolunu al
+    private def get_domain_custom_rules_file(domain : String) : String
+      sanitized = sanitize_domain(domain)
+      custom_dir = File.join(@rules_dir, "custom")
+      Dir.mkdir_p(custom_dir) unless Dir.exists?(custom_dir)
+      File.join(custom_dir, "domain-#{sanitized}.yaml")
+    end
+
+    # Domain için custom rule'ları yükle
+    def get_domain_custom_rules(domain : String) : Array(RuleData)
+      @mutex.synchronize do
+        file_path = get_domain_custom_rules_file(domain)
+        return [] of RuleData unless File.exists?(file_path)
+
+        begin
+          content = File.read(file_path)
+          yaml_data = YAML.parse(content)
+
+          unless yaml_data.raw.is_a?(Hash) && yaml_data["rules"]?
+            return [] of RuleData
+          end
+
+          rules_node = yaml_data["rules"]
+          unless rules_node.raw.is_a?(Array)
+            return [] of RuleData
+          end
+
+          rules = [] of RuleData
+          rules_node.as_a.each do |rule_node|
+            rule = parse_rule(rule_node, file_path)
+            rules << rule if rule
+          end
+
+          rules
+        rescue ex
+          Log.error { "Failed to load custom rules for domain #{domain}: #{ex.message}" }
+          [] of RuleData
+        end
+      end
+    end
+
+    # Domain için custom rule ekle
+    def create_domain_custom_rule(domain : String, rule : RuleData) : Bool
+      @mutex.synchronize do
+        begin
+          file_path = get_domain_custom_rules_file(domain)
+          existing_rules = [] of YAML::Any
+
+          # Mevcut dosyayı oku
+          if File.exists?(file_path)
+            content = File.read(file_path)
+            yaml_data = YAML.parse(content)
+            if rules_node = yaml_data["rules"]?.try(&.as_a)
+              existing_rules = rules_node
+            end
+          end
+
+          # ID kontrolü
+          existing_rules.each do |r|
+            if r["id"]?.try(&.as_i) == rule.id
+              Log.error { "Custom rule with ID #{rule.id} already exists for domain #{domain}" }
+              return false
+            end
+          end
+
+          # Yeni rule'ı ekle
+          new_rule = build_rule_yaml_any(rule)
+          existing_rules << new_rule
+
+          # Dosyayı yaz
+          write_rules_file_from_any(file_path, existing_rules)
+          @rules_cache = nil
+          Log.info { "Custom rule created for domain #{domain}: ID=#{rule.id}" }
+          true
+        rescue ex
+          Log.error { "Failed to create custom rule for domain #{domain}: #{ex.message}" }
+          false
+        end
+      end
+    end
+
+    # Domain için custom rule güncelle
+    def update_domain_custom_rule(domain : String, id : Int32, rule : RuleData) : Bool
+      @mutex.synchronize do
+        begin
+          file_path = get_domain_custom_rules_file(domain)
+          return false unless File.exists?(file_path)
+
+          content = File.read(file_path)
+          yaml_data = YAML.parse(content)
+          rules_array = yaml_data["rules"]?.try(&.as_a) || ([] of YAML::Any)
+          updated = false
+
+          new_rules = rules_array.map do |r|
+            if r["id"]?.try(&.as_i) == id
+              updated = true
+              build_rule_yaml_any(rule)
+            else
+              r
+            end
+          end
+
+          if updated
+            write_rules_file_from_any(file_path, new_rules)
+            @rules_cache = nil
+            Log.info { "Custom rule updated for domain #{domain}: ID=#{id}" }
+            true
+          else
+            Log.error { "Custom rule #{id} not found for domain #{domain}" }
+            false
+          end
+        rescue ex
+          Log.error { "Failed to update custom rule for domain #{domain}: #{ex.message}" }
+          false
+        end
+      end
+    end
+
+    # Domain için custom rule sil
+    def delete_domain_custom_rule(domain : String, id : Int32) : Bool
+      @mutex.synchronize do
+        begin
+          file_path = get_domain_custom_rules_file(domain)
+          return false unless File.exists?(file_path)
+
+          content = File.read(file_path)
+          yaml_data = YAML.parse(content)
+          rules_array = yaml_data["rules"]?.try(&.as_a) || ([] of YAML::Any)
+          new_rules = rules_array.reject { |r| r["id"]?.try(&.as_i) == id }
+
+          if new_rules.size < rules_array.size
+            if new_rules.empty?
+              # Dosyayı sil
+              File.delete(file_path)
+            else
+              write_rules_file_from_any(file_path, new_rules)
+            end
+            @rules_cache = nil
+            Log.info { "Custom rule deleted for domain #{domain}: ID=#{id}" }
+            true
+          else
+            Log.error { "Custom rule #{id} not found for domain #{domain}" }
+            false
+          end
+        rescue ex
+          Log.error { "Failed to delete custom rule for domain #{domain}: #{ex.message}" }
+          false
+        end
+      end
+    end
   end
 end

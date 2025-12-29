@@ -9,6 +9,9 @@ module KemalWAF
     @max_size_mb : Int32
     @retention_days : Int32
 
+    getter max_size_mb : Int32
+    getter retention_days : Int32
+
     def initialize(@log_dir : String, @max_size_mb : Int32, @retention_days : Int32)
       # Log dizinini oluştur
       Dir.mkdir_p(@log_dir) unless Dir.exists?(@log_dir)

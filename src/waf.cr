@@ -846,13 +846,16 @@ before_all do |env|
       Log.warn { "IP blocked: IP=#{client_ip}, Reason=#{ip_filter_result.reason}, Source=#{ip_filter_result.source}" }
       KemalWAF.metrics.increment_blocked
 
+      # Extract domain for logging
+      domain = WAFHelpers.extract_domain(env.request)
+
       # Structured log yaz
       result = KemalWAF::EvaluationResult.new(
         blocked: true,
         message: "IP blocked: #{ip_filter_result.reason}",
         rule_id: nil
       )
-      KemalWAF.structured_logger.log_request(env.request, result, Time::Span.zero, request_id, Time.utc)
+      KemalWAF.structured_logger.log_request(env.request, result, Time::Span.zero, request_id, Time.utc, domain)
 
       # Audit log yaz
       if audit_logger = KemalWAF.audit_logger
@@ -926,12 +929,16 @@ before_all do |env|
       Log.warn { "Rate limit aşıldı: IP=#{client_ip}, Path=#{env.request.path}" }
       KemalWAF.metrics.increment_rate_limited
 
+      # Extract domain for logging
+      domain = WAFHelpers.extract_domain(env.request)
+
       # Structured log yaz
       KemalWAF.structured_logger.log_rate_limit(
         env.request,
         rate_limit_result,
         request_id,
-        Time.utc
+        Time.utc,
+        domain
       )
 
       # Audit log yaz
@@ -1012,7 +1019,7 @@ before_all do |env|
     KemalWAF.metrics.increment_blocked
 
     # Write structured log (non-blocking)
-    KemalWAF.structured_logger.log_request(env.request, result, duration, request_id, Time.utc)
+    KemalWAF.structured_logger.log_request(env.request, result, duration, request_id, Time.utc, domain)
 
     # Write audit log (non-blocking)
     if audit_logger = KemalWAF.audit_logger
@@ -1040,7 +1047,7 @@ before_all do |env|
   elsif result.observed
     KemalWAF.metrics.increment_observed
     # Write structured log (non-blocking)
-    KemalWAF.structured_logger.log_request(env.request, result, duration, request_id, Time.utc)
+    KemalWAF.structured_logger.log_request(env.request, result, duration, request_id, Time.utc, domain)
 
     # Log observed matches with scores
     if !result.matched_rules.empty?
@@ -1215,7 +1222,8 @@ def proxy_request(env)
   total_duration_ns = current_time_ns - start_time_ns
   total_duration = Time::Span.new(nanoseconds: total_duration_ns.to_i64)
   result = KemalWAF::EvaluationResult.new(blocked: false)
-  KemalWAF.structured_logger.log_request(env.request, result, total_duration, request_id, Time.utc)
+  # Domain already extracted at line 1073
+  KemalWAF.structured_logger.log_request(env.request, result, total_duration, request_id, Time.utc, domain)
 
   upstream_response.body
 end

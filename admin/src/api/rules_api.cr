@@ -407,6 +407,212 @@ module AdminPanel
           {error: "Invalid JSON"}.to_json
         end
       end
+
+      # Get domain custom rules
+      get "/api/rules/domains/:domain/custom" do |env|
+        env.response.content_type = "application/json"
+
+        user = AdminPanel.require_auth(env, app.db)
+        next unless user
+
+        domain = URI.decode(env.params.url["domain"])
+        rules = app.rule_manager.get_domain_custom_rules(domain)
+
+        {
+          rules: rules,
+          total: rules.size,
+        }.to_json
+      end
+
+      # Get single domain custom rule
+      get "/api/rules/domains/:domain/custom/:id" do |env|
+        env.response.content_type = "application/json"
+
+        user = AdminPanel.require_auth(env, app.db)
+        next unless user
+
+        domain = URI.decode(env.params.url["domain"])
+        id = env.params.url["id"].to_i
+        rules = app.rule_manager.get_domain_custom_rules(domain)
+        rule = rules.find { |r| r.id == id }
+
+        unless rule
+          env.response.status_code = 404
+          next {error: "Custom rule not found"}.to_json
+        end
+
+        rule.to_json
+      end
+
+      # Create domain custom rule
+      post "/api/rules/domains/:domain/custom" do |env|
+        env.response.content_type = "application/json"
+
+        user = AdminPanel.require_auth(env, app.db)
+        next unless user
+
+        domain = URI.decode(env.params.url["domain"])
+
+        begin
+          body = env.request.body.try(&.gets_to_end) || "{}"
+          data = JSON.parse(body)
+
+          id = data["id"]?.try(&.as_i)
+          msg = data["msg"]?.try(&.as_s) || ""
+          action = data["action"]?.try(&.as_s) || "deny"
+
+          unless id
+            env.response.status_code = 400
+            next {error: "Rule ID is required"}.to_json
+          end
+
+          # Parse variables
+          variables = parse_variables(data["variables"]?)
+
+          rule = RuleData.new(
+            id: id,
+            msg: msg,
+            action: action,
+            name: data["name"]?.try(&.as_s),
+            pattern: data["pattern"]?.try(&.as_s),
+            operator: data["operator"]?.try(&.as_s) || "regex",
+            severity: data["severity"]?.try(&.as_s),
+            category: data["category"]?.try(&.as_s),
+            paranoia_level: data["paranoia_level"]?.try(&.as_i),
+            tags: data["tags"]?.try(&.as_a.map(&.as_s)),
+            transforms: data["transforms"]?.try(&.as_a.map(&.as_s)),
+            variables: variables,
+            score: data["score"]?.try(&.as_i),
+            default_score: data["default_score"]?.try(&.as_i) || 1
+          )
+
+          unless app.rule_manager.create_domain_custom_rule(domain, rule)
+            env.response.status_code = 500
+            next {error: "Failed to create custom rule"}.to_json
+          end
+
+          # Audit log
+          app.db.log_audit(
+            user.id,
+            "domain_custom_rule_created",
+            "Domain: #{domain}, Rule ID: #{id}, Msg: #{msg}",
+            env.request.headers["X-Forwarded-For"]? || env.request.remote_address.try(&.to_s)
+          )
+
+          env.response.status_code = 201
+          {
+            success: true,
+            message: "Custom rule created",
+            id:      id,
+          }.to_json
+        rescue ex : JSON::ParseException
+          env.response.status_code = 400
+          {error: "Invalid JSON"}.to_json
+        end
+      end
+
+      # Update domain custom rule
+      put "/api/rules/domains/:domain/custom/:id" do |env|
+        env.response.content_type = "application/json"
+
+        user = AdminPanel.require_auth(env, app.db)
+        next unless user
+
+        domain = URI.decode(env.params.url["domain"])
+        id = env.params.url["id"].to_i
+
+        # Check if rule exists
+        rules = app.rule_manager.get_domain_custom_rules(domain)
+        unless rules.any? { |r| r.id == id }
+          env.response.status_code = 404
+          next {error: "Custom rule not found"}.to_json
+        end
+
+        begin
+          body = env.request.body.try(&.gets_to_end) || "{}"
+          data = JSON.parse(body)
+
+          msg = data["msg"]?.try(&.as_s) || ""
+          action = data["action"]?.try(&.as_s) || "deny"
+
+          # Parse variables
+          variables = parse_variables(data["variables"]?)
+
+          rule = RuleData.new(
+            id: id,
+            msg: msg,
+            action: action,
+            name: data["name"]?.try(&.as_s),
+            pattern: data["pattern"]?.try(&.as_s),
+            operator: data["operator"]?.try(&.as_s) || "regex",
+            severity: data["severity"]?.try(&.as_s),
+            category: data["category"]?.try(&.as_s),
+            paranoia_level: data["paranoia_level"]?.try(&.as_i),
+            tags: data["tags"]?.try(&.as_a.map(&.as_s)),
+            transforms: data["transforms"]?.try(&.as_a.map(&.as_s)),
+            variables: variables,
+            score: data["score"]?.try(&.as_i),
+            default_score: data["default_score"]?.try(&.as_i) || 1
+          )
+
+          unless app.rule_manager.update_domain_custom_rule(domain, id, rule)
+            env.response.status_code = 500
+            next {error: "Failed to update custom rule"}.to_json
+          end
+
+          # Audit log
+          app.db.log_audit(
+            user.id,
+            "domain_custom_rule_updated",
+            "Domain: #{domain}, Rule ID: #{id}",
+            env.request.headers["X-Forwarded-For"]? || env.request.remote_address.try(&.to_s)
+          )
+
+          {
+            success: true,
+            message: "Custom rule updated",
+          }.to_json
+        rescue ex : JSON::ParseException
+          env.response.status_code = 400
+          {error: "Invalid JSON"}.to_json
+        end
+      end
+
+      # Delete domain custom rule
+      delete "/api/rules/domains/:domain/custom/:id" do |env|
+        env.response.content_type = "application/json"
+
+        user = AdminPanel.require_auth(env, app.db)
+        next unless user
+
+        domain = URI.decode(env.params.url["domain"])
+        id = env.params.url["id"].to_i
+
+        # Check if rule exists
+        rules = app.rule_manager.get_domain_custom_rules(domain)
+        unless rules.any? { |r| r.id == id }
+          env.response.status_code = 404
+          next {error: "Custom rule not found"}.to_json
+        end
+
+        unless app.rule_manager.delete_domain_custom_rule(domain, id)
+          env.response.status_code = 500
+          next {error: "Failed to delete custom rule"}.to_json
+        end
+
+        # Audit log
+        app.db.log_audit(
+          user.id,
+          "domain_custom_rule_deleted",
+          "Domain: #{domain}, Rule ID: #{id}",
+          env.request.headers["X-Forwarded-For"]? || env.request.remote_address.try(&.to_s)
+        )
+
+        {
+          success: true,
+          message: "Custom rule deleted",
+        }.to_json
+      end
     end
 
     private def self.parse_variables(node : JSON::Any?) : Array(VariableSpecData)?

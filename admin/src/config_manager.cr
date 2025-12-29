@@ -222,10 +222,14 @@ module AdminPanel
               enabled = [] of Int32
               disabled = [] of Int32
               if enabled_node = waf_rules_node["enabled"]?
-                enabled = enabled_node.as_a?.map(&.as_i) || [] of Int32
+                if arr = enabled_node.as_a?
+                  enabled = arr.map(&.as_i)
+                end
               end
               if disabled_node = waf_rules_node["disabled"]?
-                disabled = disabled_node.as_a?.map(&.as_i) || [] of Int32
+                if arr = disabled_node.as_a?
+                  disabled = arr.map(&.as_i)
+                end
               end
               waf_rules = WAFRulesConfigData.new(enabled: enabled, disabled: disabled)
             end

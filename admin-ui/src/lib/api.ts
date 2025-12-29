@@ -400,6 +400,60 @@ export const api = {
         body: JSON.stringify({ threshold }),
       }
     ),
+
+  // Audit Logs
+  getAuditLogs: (limit: number = 100, offset: number = 0) =>
+    request<{ logs: Array<{ id: number; user_id: number; action: string; details: string | null; ip_address: string | null; created_at: string }> }>(
+      `/config/audit-logs?limit=${limit}&offset=${offset}`
+    ),
+
+  // Domain Logs
+  getDomainLogs: (domain: string, limit: number = 100, offset: number = 0) =>
+    request<{ logs: Array<Record<string, unknown>>; total: number; has_more: boolean }>(
+      `/logs/domains/${encodeURIComponent(domain)}?limit=${limit}&offset=${offset}`
+    ),
+
+  getDomainLogFiles: (domain: string) =>
+    request<{ files: Array<{ date: string; size: number; path: string }> }>(
+      `/logs/domains/${encodeURIComponent(domain)}/files`
+    ),
+
+  // Domain Custom Rules
+  getDomainCustomRules: (domain: string) =>
+    request<{ rules: Rule[]; total: number }>(
+      `/rules/domains/${encodeURIComponent(domain)}/custom`
+    ),
+
+  getDomainCustomRule: (domain: string, id: number) =>
+    request<Rule>(
+      `/rules/domains/${encodeURIComponent(domain)}/custom/${id}`
+    ),
+
+  createDomainCustomRule: (domain: string, rule: Partial<Rule> & { id: number; msg: string; action: string }) =>
+    request<{ success: boolean; message: string; id: number }>(
+      `/rules/domains/${encodeURIComponent(domain)}/custom`,
+      {
+        method: 'POST',
+        body: JSON.stringify(rule),
+      }
+    ),
+
+  updateDomainCustomRule: (domain: string, id: number, rule: Partial<Rule>) =>
+    request<{ success: boolean; message: string }>(
+      `/rules/domains/${encodeURIComponent(domain)}/custom/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(rule),
+      }
+    ),
+
+  deleteDomainCustomRule: (domain: string, id: number) =>
+    request<{ success: boolean; message: string }>(
+      `/rules/domains/${encodeURIComponent(domain)}/custom/${id}`,
+      {
+        method: 'DELETE',
+      }
+    ),
 }
 
 export { ApiError }

@@ -5,6 +5,8 @@ import { api } from '@/lib/api'
 import { SetupPage } from '@/pages/SetupPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { DomainSettingsPage } from '@/pages/DomainSettingsPage'
+import { AddDomainPage } from '@/pages/AddDomainPage'
 import { LoadingScreen } from '@/components/LoadingScreen'
 
 function AppRoutes() {
@@ -55,6 +57,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<DashboardPage />} />
+      <Route path="/domains/new" element={<AddDomainPage />} />
+      <Route path="/domains/:domain" element={<DomainSettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

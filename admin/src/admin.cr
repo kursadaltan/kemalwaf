@@ -11,6 +11,7 @@ require "./api/hosts_api"
 require "./api/config_api"
 require "./api/metrics_api"
 require "./api/rules_api"
+require "./api/logs_api"
 require "./middleware/auth_middleware"
 
 module AdminPanel
@@ -192,6 +193,7 @@ module AdminPanel
       ConfigAPI.setup(self)
       MetricsAPI.setup(self)
       RulesAPI.setup(self)
+      LogsAPI.setup(self)
 
       # Health check
       get "/api/health" do |env|

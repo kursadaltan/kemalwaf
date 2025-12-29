@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Shield, 
@@ -38,7 +39,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { api, ProxyHost } from '@/lib/api'
 import { formatNumber, formatUptime } from '@/lib/utils'
-import { ProxyHostModal } from '@/components/ProxyHostModal'
 import { GlobalSettingsModal } from '@/components/GlobalSettingsModal'
 import { RulesPage } from '@/pages/RulesPage'
 
@@ -178,11 +178,10 @@ function ProxyHostCard({ host, onEdit, onDelete }: ProxyHostCardProps) {
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
-  const [isHostModalOpen, setIsHostModalOpen] = useState(false)
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
-  const [editingHost, setEditingHost] = useState<ProxyHost | null>(null)
   const [showRulesPage, setShowRulesPage] = useState(false)
 
   // Fetch data
@@ -237,19 +236,13 @@ export function DashboardPage() {
   )
 
   const handleEdit = (host: ProxyHost) => {
-    setEditingHost(host)
-    setIsHostModalOpen(true)
+    navigate(`/domains/${host.domain}?tab=general`)
   }
 
   const handleDelete = (domain: string) => {
     if (confirm(`Are you sure you want to delete ${domain}?`)) {
       deleteHostMutation.mutate(domain)
     }
-  }
-
-  const handleModalClose = () => {
-    setIsHostModalOpen(false)
-    setEditingHost(null)
   }
 
   // Show Rules Page when toggled
@@ -365,7 +358,7 @@ export function DashboardPage() {
                   className="pl-9"
                 />
               </div>
-              <Button onClick={() => setIsHostModalOpen(true)}>
+              <Button onClick={() => navigate('/domains/new')}>
                 <Plus className="h-4 w-4 mr-1" />
                 Add Host
               </Button>
@@ -388,7 +381,7 @@ export function DashboardPage() {
                   : 'Add your first proxy host to get started'}
               </p>
               {!searchQuery && (
-                <Button onClick={() => setIsHostModalOpen(true)}>
+                <Button onClick={() => navigate('/domains/new')}>
                   <Plus className="h-4 w-4 mr-1" />
                   Add Proxy Host
                 </Button>
@@ -410,11 +403,6 @@ export function DashboardPage() {
       </main>
 
       {/* Modals */}
-      <ProxyHostModal
-        isOpen={isHostModalOpen}
-        onClose={handleModalClose}
-        host={editingHost}
-      />
       <GlobalSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}

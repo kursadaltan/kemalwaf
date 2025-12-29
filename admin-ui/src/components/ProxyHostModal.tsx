@@ -116,9 +116,17 @@ export function ProxyHostModal({ isOpen, onClose, host }: ProxyHostModalProps) {
     }
 
     // Validate Let's Encrypt email if SSL is enabled and type is letsencrypt
-    if (sslEnabled && sslType === 'letsencrypt' && !sslEmail?.trim()) {
-      toast.error('Email address is required for Let\'s Encrypt certificates')
-      return
+    if (sslEnabled && sslType === 'letsencrypt') {
+      if (!sslEmail?.trim()) {
+        toast.error('Email address is required for Let\'s Encrypt certificates')
+        return
+      }
+      // Basic email format validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(sslEmail.trim())) {
+        toast.error('Please enter a valid email address')
+        return
+      }
     }
 
     const data: CreateHostData = {

@@ -90,13 +90,24 @@ module AdminPanel
 
           # Build domain config
           ssl_type = data["ssl_type"]?.try(&.as_s) || "none"
+
+          # Validate Let's Encrypt email
+          ssl_email = data["ssl_email"]?.try(&.as_s)
+          if ssl_type == "letsencrypt"
+            if !ssl_email || ssl_email.strip.empty?
+              env.response.status_code = 400
+              next {error: "Email address is required for Let's Encrypt certificates"}.to_json
+            end
+            ssl_email = ssl_email.strip
+          end
+
           config = DomainConfigData.new(
             default_upstream: upstream,
             upstream_host_header: data["upstream_host_header"]?.try(&.as_s) || domain,
             preserve_original_host: data["preserve_host"]?.try(&.as_bool) || true,
             verify_ssl: data["verify_ssl"]?.try(&.as_bool) || true,
             letsencrypt_enabled: ssl_type == "letsencrypt",
-            letsencrypt_email: data["ssl_email"]?.try(&.as_s),
+            letsencrypt_email: ssl_email,
             cert_file: ssl_type == "custom" ? data["cert_file"]?.try(&.as_s) : nil,
             key_file: ssl_type == "custom" ? data["key_file"]?.try(&.as_s) : nil
           )
@@ -151,13 +162,24 @@ module AdminPanel
           end
 
           ssl_type = data["ssl_type"]?.try(&.as_s) || "none"
+
+          # Validate Let's Encrypt email
+          ssl_email = data["ssl_email"]?.try(&.as_s)
+          if ssl_type == "letsencrypt"
+            if !ssl_email || ssl_email.strip.empty?
+              env.response.status_code = 400
+              next {error: "Email address is required for Let's Encrypt certificates"}.to_json
+            end
+            ssl_email = ssl_email.strip
+          end
+
           config = DomainConfigData.new(
             default_upstream: upstream,
             upstream_host_header: data["upstream_host_header"]?.try(&.as_s) || domain,
             preserve_original_host: data["preserve_host"]?.try(&.as_bool) || true,
             verify_ssl: data["verify_ssl"]?.try(&.as_bool) || true,
             letsencrypt_enabled: ssl_type == "letsencrypt",
-            letsencrypt_email: data["ssl_email"]?.try(&.as_s),
+            letsencrypt_email: ssl_email,
             cert_file: ssl_type == "custom" ? data["cert_file"]?.try(&.as_s) : nil,
             key_file: ssl_type == "custom" ? data["key_file"]?.try(&.as_s) : nil
           )

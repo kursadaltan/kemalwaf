@@ -20,6 +20,10 @@ module KemalWAF
     @running : Atomic(Int32)
     @current_file_path : String
     @file_mutex : Mutex
+    @domain_loggers : Hash(String, LogRotator) = {} of String => LogRotator
+    @domain_file_paths : Hash(String, String) = {} of String => String
+    @domain_mutexes : Hash(String, Mutex) = {} of String => Mutex
+    @domain_mutex : Mutex = Mutex.new
 
     def initialize(
       @log_dir : String,
@@ -49,6 +53,7 @@ module KemalWAF
       duration : Time::Span,
       request_id : String? = nil,
       start_time : Time? = nil,
+      domain : String? = nil,
     )
       request_id ||= UUID.random.to_s
       client_ip = extract_client_ip(request)
@@ -68,6 +73,7 @@ module KemalWAF
         rule_message: result.message,
         duration_ms:  duration.total_milliseconds,
         status_code:  result.blocked ? 403 : 200,
+        domain:       domain,
       }.to_json
 
       enqueue(log_entry)
@@ -98,6 +104,7 @@ module KemalWAF
       result : RateLimitResult,
       request_id : String? = nil,
       start_time : Time? = nil,
+      domain : String? = nil,
     )
       request_id ||= UUID.random.to_s
       client_ip = extract_client_ip(request)
@@ -113,6 +120,7 @@ module KemalWAF
         remaining:     result.remaining,
         reset_at:      result.reset_at.to_rfc3339,
         blocked_until: result.blocked_until.try(&.to_rfc3339),
+        domain:        domain,
       }.to_json
 
       enqueue(log_entry)
@@ -181,25 +189,94 @@ module KemalWAF
     private def flush_batch(batch : Array(LogMessage))
       return if batch.empty?
 
-      @file_mutex.synchronize do
-        begin
-          # Rotation kontrolü
-          current_date = Time.local
-          if @log_rotator.should_rotate?(@current_file_path, current_date)
-            @log_rotator.rotate_log_file(@current_file_path, current_date)
-            @current_file_path = @log_rotator.get_current_log_file(@base_name, current_date)
-          end
+      # Domain bazlı batch'leri ayır
+      domain_batches = {} of String => Array(LogMessage)
+      global_batch = [] of LogMessage
 
-          # Dosyaya yaz
-          File.open(@current_file_path, "a") do |file|
-            batch.each do |message|
-              file.puts(message)
-            end
+      batch.each do |message|
+        begin
+          parsed = JSON.parse(message)
+          domain = parsed["domain"]?.try(&.as_s?)
+
+          if domain && !domain.empty?
+            sanitized = sanitize_domain_name(domain)
+            domain_batches[sanitized] ||= [] of LogMessage
+            domain_batches[sanitized] << message
+          else
+            global_batch << message
           end
-        rescue ex
-          Log.error { "Log write error: #{ex.message}" }
+        rescue
+          # Parse hatası durumunda global batch'e ekle
+          global_batch << message
         end
       end
+
+      # Global log dosyasına yaz
+      unless global_batch.empty?
+        @file_mutex.synchronize do
+          flush_to_file(@base_name, @current_file_path, @log_rotator, global_batch)
+        end
+      end
+
+      # Domain bazlı log dosyalarına yaz
+      domain_batches.each do |sanitized_domain, domain_messages|
+        flush_domain_batch(sanitized_domain, domain_messages)
+      end
+    end
+
+    # Domain bazlı batch'i dosyaya yaz
+    private def flush_domain_batch(sanitized_domain : String, messages : Array(LogMessage))
+      @domain_mutex.synchronize do
+        # Domain için LogRotator ve file path'i al veya oluştur
+        log_rotator = @domain_loggers[sanitized_domain]?
+        unless log_rotator
+          log_rotator = LogRotator.new(@log_dir, @log_rotator.max_size_mb, @log_rotator.retention_days)
+          @domain_loggers[sanitized_domain] = log_rotator
+        end
+
+        file_path = @domain_file_paths[sanitized_domain]?
+        unless file_path
+          file_path = log_rotator.get_current_log_file("waf-#{sanitized_domain}")
+          @domain_file_paths[sanitized_domain] = file_path
+        end
+
+        mutex = @domain_mutexes[sanitized_domain]?
+        unless mutex
+          mutex = Mutex.new
+          @domain_mutexes[sanitized_domain] = mutex
+        end
+
+        mutex.synchronize do
+          flush_to_file("waf-#{sanitized_domain}", file_path, log_rotator, messages)
+          @domain_file_paths[sanitized_domain] = file_path
+        end
+      end
+    end
+
+    # Dosyaya yazma işlemi (ortak metod)
+    private def flush_to_file(base_name : String, file_path : String, log_rotator : LogRotator, messages : Array(LogMessage))
+      begin
+        # Rotation kontrolü
+        current_date = Time.local
+        if log_rotator.should_rotate?(file_path, current_date)
+          log_rotator.rotate_log_file(file_path, current_date)
+          file_path = log_rotator.get_current_log_file(base_name, current_date)
+        end
+
+        # Dosyaya yaz
+        File.open(file_path, "a") do |file|
+          messages.each do |message|
+            file.puts(message)
+          end
+        end
+      rescue ex
+        Log.error { "Log write error: #{ex.message}" }
+      end
+    end
+
+    # Domain adını sanitize et (dosya adı için güvenli hale getir)
+    private def sanitize_domain_name(domain : String) : String
+      domain.gsub(/[^a-zA-Z0-9\-]/, "-").downcase
     end
 
     # Client IP extraction
