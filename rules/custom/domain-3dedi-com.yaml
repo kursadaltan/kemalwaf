@@ -1,0 +1,16 @@
+---
+rules:
+- id: 999901
+  name: Allow POST to /general/
+  msg: Allow POST requests to /general/ path
+  category: whitelist
+  severity: LOW
+  paranoia_level: 1
+  operator: regex
+  pattern: ^/general/
+  action: allow
+  score: 0
+  variables:
+  - type: URI
+  tags:
+  - whitelist

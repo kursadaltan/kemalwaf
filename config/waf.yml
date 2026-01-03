@@ -27,12 +27,20 @@ waf:
       upstream_host_header: "example.com"  # If empty, taken from upstream URI
       preserve_original_host: true
 
+      waf_threshold: 3
     "api.example.com":
       default_upstream: "http://localhost:8081"
       upstream_host_header: "api.example.com"  # If empty, taken from upstream URI
       preserve_original_host: true
       verify_ssl: false  # Skip SSL certificate verification (for self-signed or internal certificates)
 
+    "3dedi.com":
+      default_upstream: "https://91.241.48.11"
+      upstream_host_header: "3dedi.com"
+      preserve_original_host: true
+      verify_ssl: false
+
+      waf_threshold: 2
   rate_limiting:
     enabled: true
     default_limit: 250
