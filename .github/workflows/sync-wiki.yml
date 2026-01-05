@@ -1,0 +1,88 @@
+name: Sync Docs to Wiki
+
+on:
+  push:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/sync-wiki.yml'
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Clone Wiki
+        run: |
+          git clone https://github.com/kursadaltan/kemalwaf.wiki.git wiki
+          
+      - name: Copy Documentation
+        run: |
+          # Copy main pages
+          cp docs/README.md wiki/Home.md
+          cp docs/installation.md wiki/Installation.md
+          cp docs/configuration.md wiki/Configuration.md
+          cp docs/rules.md wiki/Rules.md
+          cp docs/deployment.md wiki/Deployment.md
+          cp docs/nginx-setup.md wiki/Nginx-Setup.md
+          cp docs/tls-https.md wiki/TLS-HTTPS.md
+          cp docs/api.md wiki/API-Reference.md
+          cp docs/environment-variables.md wiki/Environment-Variables.md
+          cp docs/geoip.md wiki/GeoIP-Filtering.md
+          
+          # Create sidebar
+          cat > wiki/_Sidebar.md << 'EOF'
+          ## Getting Started
+          - [[Home]]
+          - [[Installation]]
+          - [[Configuration]]
+          
+          ## Guides
+          - [[Rules]]
+          - [[Deployment]]
+          - [[Nginx-Setup]]
+          - [[TLS-HTTPS]]
+          
+          ## Reference
+          - [[API-Reference]]
+          - [[Environment-Variables]]
+          - [[GeoIP-Filtering]]
+          EOF
+          
+      - name: Update Wiki Links
+        run: |
+          cd wiki
+          # Convert markdown links to wiki format
+          find . -name "*.md" -type f -exec sed -i 's|\.github/docs/||g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|docs/||g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(installation\.md)|(Installation)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(configuration\.md)|(Configuration)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(rules\.md)|(Rules)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(deployment\.md)|(Deployment)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(nginx-setup\.md)|(Nginx-Setup)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(tls-https\.md)|(TLS-HTTPS)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(api\.md)|(API-Reference)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(environment-variables\.md)|(Environment-Variables)|g' {} \;
+          find . -name "*.md" -type f -exec sed -i 's|(geoip\.md)|(GeoIP-Filtering)|g' {} \;
+          
+      - name: Commit and Push to Wiki
+        run: |
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git diff --quiet && git diff --staged --quiet && echo "No changes to commit" || {
+            git commit -m "Auto-sync docs from main repo - $(date +%Y-%m-%d)"
+            git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/kursadaltan/kemalwaf.wiki.git master
+          }
+

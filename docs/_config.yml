@@ -1,0 +1,16 @@
+# Jekyll configuration for GitHub Pages
+title: kemal-waf Documentation
+description: Web Application Firewall built with Kemal framework
+theme: jekyll-theme-minimal
+
+# Exclude files from processing
+exclude:
+  - WIKI_SETUP.md
+  - GITHUB_PAGES_SETUP.md
+  - ENTERPRISE_ROADMAP.md
+
+# Navigation (optional - can be customized)
+plugins:
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
