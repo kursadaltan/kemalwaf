@@ -1,5 +1,5 @@
 # Crystal
-/docs/
+# /docs/ - Commented out to allow GitHub Pages
 /lib/
 !/lib/libinjection/
 !/lib/libinjection/**

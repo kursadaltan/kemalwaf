@@ -60,17 +60,22 @@ docker run -d \
 
 ## Documentation
 
-📚 **[Full Documentation](.github/docs/)**
+📚 **Full Documentation Available:**
 
-- [Installation Guide](.github/docs/installation.md) - Detailed installation instructions
-- [Configuration](.github/docs/configuration.md) - WAF configuration guide
-- [Rule Format](.github/docs/rules.md) - How to write and manage rules
-- [TLS/HTTPS Setup](.github/docs/tls-https.md) - SSL/TLS configuration
-- [Deployment](.github/docs/deployment.md) - Production deployment guide
-- [Nginx Setup](.github/docs/nginx-setup.md) - Reverse proxy configuration
-- [Environment Variables](.github/docs/environment-variables.md) - All environment variables
-- [GeoIP Filtering](.github/docs/geoip.md) - Country-based blocking
-- [API Reference](.github/docs/api.md) - API endpoints
+- 🌐 **[GitHub Pages](https://kursadaltan.github.io/kemalwaf/)** - Online documentation site
+- 📖 **[GitHub Wiki](https://github.com/kursadaltan/kemalwaf/wiki)** - Wiki documentation
+- 📁 **[Local Docs](docs/)** - Documentation files in repository
+
+**Quick Links:**
+- [Installation Guide](docs/installation.md) - Detailed installation instructions
+- [Configuration](docs/configuration.md) - WAF configuration guide
+- [Rule Format](docs/rules.md) - How to write and manage rules
+- [TLS/HTTPS Setup](docs/tls-https.md) - SSL/TLS configuration
+- [Deployment](docs/deployment.md) - Production deployment guide
+- [Nginx Setup](docs/nginx-setup.md) - Reverse proxy configuration
+- [Environment Variables](docs/environment-variables.md) - All environment variables
+- [GeoIP Filtering](docs/geoip.md) - Country-based blocking
+- [API Reference](docs/api.md) - API endpoints
 
 ## Architecture
 
