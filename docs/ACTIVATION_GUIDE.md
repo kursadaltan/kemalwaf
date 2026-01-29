@@ -1,237 +1,109 @@
 # GitHub Pages ve Wiki Aktivasyon Rehberi
 
-Bu rehber, kemal-waf dokümantasyonunu GitHub Pages ve Wiki'de aktifleştirmek için adım adım talimatlar içerir.
+Bu rehber, kemal-waf dokümantasyonunu GitHub Pages ve Wiki'de aktifleştirmek için adım adım talimatlar içerir. **Wiki tamamen GitHub Actions ile senkronize edilir; elle wiki repo oluşturmanıza gerek yok.**
 
-## 🚀 Hızlı Başlangıç
+---
 
-### 1. GitHub Pages'i Aktifleştirme
+## 1. GitHub Pages
 
-1. GitHub repo'nuzda **Settings** sekmesine gidin
-   - URL: `https://github.com/kursadaltan/kemalwaf/settings`
+1. Repo **Settings** → **Pages**
+2. **Source:** Branch `main`, Folder **/docs**
+3. **Save**
+4. Birkaç dakika sonra: **https://kursadaltan.github.io/kemalwaf/**
 
-2. Sol menüden **Pages** seçeneğine tıklayın
+---
 
-3. **Source** bölümünde:
-   - **Branch:** `main` (veya `master`) seçin
-   - **Folder:** `/docs` seçin
+## 2. GitHub Wiki (sadece Actions, elle repo yok)
 
-4. **Save** butonuna tıklayın
+### Adım 1: Wikis’i aç
 
-5. Birkaç dakika bekleyin (ilk yayınlama 5-10 dakika sürebilir)
+1. Repo **Settings** → **General**
+2. **Features** bölümünde **Wikis** işaretle
+3. **Save**
 
-6. Site şu adreste yayınlanacak:
-   ```
-   https://kursadaltan.github.io/kemalwaf/
-   ```
+### Adım 2: Wiki’yi ilk kez oluştur
 
-✅ **GitHub Pages aktif!**
+Wiki repo’nun oluşması için GitHub’da en az bir sayfa gerekir:
 
-### 2. GitHub Wiki'yi Aktifleştirme
+1. Repo ana sayfasında **Wiki** sekmesine tıkla  
+   veya: **https://github.com/kursadaltan/kemalwaf/wiki**
+2. **Create the first page** (veya “New Page”)
+3. Başlık: `Home`, içerik: `# Welcome` (veya boş)
+4. **Save Page**
 
-1. GitHub repo'nuzda **Settings** sekmesine gidin
-   - URL: `https://github.com/kursadaltan/kemalwaf/settings`
+Böylece `kemalwaf.wiki` repo’su oluşur. İçeriği elle doldurmayın; Actions dolduracak.
 
-2. Sol menüden **General** sekmesine gidin
+### Adım 3: Secret ekle (Actions’ın wiki’ye yazması için)
 
-3. **Features** bölümünde:
-   - **Wikis** checkbox'ını işaretleyin
+1. GitHub’da **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+2. **Generate new token (classic)**
+3. İsim: `Wiki Sync`, süre: istediğiniz
+4. İzin: **repo** (Full control of private repositories)
+5. **Generate token** → token’ı kopyala (bir daha gösterilmez)
+6. Repo’ya dön: **Settings** → **Secrets and variables** → **Actions**
+7. **New repository secret**
+8. Name: **`WIKI_GITHUB_TOKEN`**  
+   Value: az önce kopyaladığınız token
+9. **Add secret**
 
-4. **Save** butonuna tıklayın
+### Adım 4: Workflow’u tetikle
 
-5. Wiki'yi ilk kez doldurmak için aşağıdaki adımları izleyin
+- **Seçenek A:** `docs/` içinde bir değişiklik yapıp `main`’e push edin → “Sync Docs to Wiki” workflow’u otomatik çalışır.
+- **Seçenek B:** **Actions** → **Sync Docs to Wiki** → **Run workflow** → **Run workflow**
 
-✅ **GitHub Wiki aktif!**
+İlk çalışmada Actions, `docs/` içeriğini wiki’ye kopyalayıp günceller. Sonraki her `docs/` değişikliğinde wiki otomatik güncellenir.
 
-## 📋 Wiki'yi İlk Kez Doldurma
+---
 
-### Yöntem 1: Otomatik Script (Önerilen)
+## Özet
 
-```bash
-# Script'i çalıştır
-./scripts/sync-wiki.sh
-```
+| Ne yapacaksınız | Nerede |
+|-----------------|--------|
+| Wikis’i açmak | Settings → General → Features → Wikis |
+| İlk wiki sayfası (Home) | Wiki sekmesi → Create the first page |
+| Secret `WIKI_GITHUB_TOKEN` | Settings → Secrets and variables → Actions |
+| Wiki içeriğini doldurmak | **Hiçbir şey** – GitHub Actions yapar |
 
-Bu script:
-- Wiki repository'sini clone eder
-- Tüm dokümantasyon dosyalarını kopyalar
-- Linkleri wiki formatına çevirir
-- Otomatik commit ve push yapar
+Elle wiki repo clone etmeniz veya lokal script çalıştırmanız gerekmez.
 
-### Yöntem 2: Manuel Kopyalama
+---
 
-```bash
-# 1. Wiki repository'sini clone et
-git clone https://github.com/kursadaltan/kemalwaf.wiki.git
-cd kemalwaf.wiki
-
-# 2. Dokümantasyon dosyalarını kopyala
-cp ../docs/README.md Home.md
-cp ../docs/installation.md Installation.md
-cp ../docs/configuration.md Configuration.md
-cp ../docs/rules.md Rules.md
-cp ../docs/deployment.md Deployment.md
-cp ../docs/nginx-setup.md Nginx-Setup.md
-cp ../docs/tls-https.md TLS-HTTPS.md
-cp ../docs/api.md API-Reference.md
-cp ../docs/environment-variables.md Environment-Variables.md
-cp ../docs/geoip.md GeoIP-Filtering.md
-
-# 3. Sidebar oluştur
-cat > _Sidebar.md << 'EOF'
-## Getting Started
-- [[Home]]
-- [[Installation]]
-- [[Configuration]]
-
-## Guides
-- [[Rules]]
-- [[Deployment]]
-- [[Nginx-Setup]]
-- [[TLS-HTTPS]]
-
-## Reference
-- [[API-Reference]]
-- [[Environment-Variables]]
-- [[GeoIP-Filtering]]
-EOF
-
-# 4. Commit ve push
-git add .
-git commit -m "Initial documentation"
-git push origin master
-```
-
-### Yöntem 3: GitHub Web UI
-
-1. Wiki sekmesine gidin: `https://github.com/kursadaltan/kemalwaf/wiki`
-2. **Create the first page** butonuna tıklayın
-3. Sayfa adı: `Home`
-4. İçeriği `docs/README.md` dosyasından kopyalayın
-5. **Save Page** butonuna tıklayın
-6. Diğer sayfalar için **New Page** butonunu kullanın
-
-## 🔄 Otomatik Senkronizasyon
-
-### GitHub Actions ile Otomatik Sync
-
-`.github/workflows/sync-wiki.yml` dosyası zaten hazır! Bu workflow:
-
-- `docs/` klasöründeki değişiklikleri otomatik algılar
-- Wiki'yi otomatik günceller
-- Her commit'te çalışır
-
-**Not:** İlk çalıştırmada GitHub Actions'ın wiki repository'sine yazma izni olması gerekir. Bu genellikle otomatik olarak ayarlanır.
-
-### Manuel Sync
-
-Dokümantasyonu güncelledikten sonra:
-
-```bash
-./scripts/sync-wiki.sh
-```
-
-## ✅ Kontrol Listesi
+## Kontrol listesi
 
 ### GitHub Pages
-- [ ] Settings > Pages'te source ayarlandı (`main` branch, `/docs` folder)
-- [ ] Site yayınlandı: `https://kursadaltan.github.io/kemalwaf/`
-- [ ] Ana sayfa görünüyor
-- [ ] Linkler çalışıyor
+- [ ] Settings → Pages: Branch `main`, Folder `/docs`
+- [ ] https://kursadaltan.github.io/kemalwaf/ açılıyor
 
 ### GitHub Wiki
-- [ ] Settings > Features'te Wikis aktif
-- [ ] Wiki sayfası açılıyor: `https://github.com/kursadaltan/kemalwaf/wiki`
-- [ ] Home.md sayfası var
-- [ ] Tüm dokümantasyon sayfaları kopyalandı
-- [ ] Sidebar görünüyor
-- [ ] Linkler çalışıyor
+- [ ] Settings → Features → Wikis işaretli
+- [ ] Wiki’de “Create the first page” ile bir sayfa oluşturuldu
+- [ ] Secret: **WIKI_GITHUB_TOKEN** eklendi
+- [ ] Actions’ta “Sync Docs to Wiki” bir kez başarıyla çalıştı
+- [ ] https://github.com/kursadaltan/kemalwaf/wiki dolu ve güncel
 
-### Otomatik Sync
-- [ ] GitHub Actions workflow aktif
-- [ ] `docs/` klasöründeki değişiklikler wiki'ye sync oluyor
+---
 
-## 🔗 Erişim Linkleri
+## Sorun giderme
 
-Aktifleştirme sonrası:
+### “WIKI_GITHUB_TOKEN secret tanımlı değil”
+- Repo **Settings** → **Secrets and variables** → **Actions**
+- Secret adı tam olarak **`WIKI_GITHUB_TOKEN`** olmalı
+- Değer: `repo` yetkili Personal Access Token
+
+### “Wiki clone edilemedi”
+- Wikis açık mı? (Settings → General → Features → Wikis)
+- Wiki’de en az bir sayfa var mı? (Wiki → Create the first page / New Page)
+- Sayfa kaydettikten sonra workflow’u tekrar çalıştırın.
+
+### Wiki güncellenmiyor
+- **Actions** sekmesinde “Sync Docs to Wiki” son çalıştırmasına bakın
+- Hata varsa log’u inceleyin
+- `docs/` değişikliği yapıp push ettiğinizde workflow tetiklenir; path filtresi `docs/**` ve `sync-wiki.yml` değişikliklerini içerir.
+
+---
+
+## Erişim linkleri
 
 - **GitHub Pages:** https://kursadaltan.github.io/kemalwaf/
 - **GitHub Wiki:** https://github.com/kursadaltan/kemalwaf/wiki
-- **Repository Docs:** https://github.com/kursadaltan/kemalwaf/tree/main/docs
-
-## 📝 README Güncellemesi
-
-README.md dosyası zaten güncellenmiş durumda. Şu linkler eklendi:
-
-```markdown
-## Documentation
-
-📚 **Full Documentation Available:**
-
-- 🌐 **[GitHub Pages](https://kursadaltan.github.io/kemalwaf/)** - Online documentation site
-- 📖 **[GitHub Wiki](https://github.com/kursadaltan/kemalwaf/wiki)** - Wiki documentation
-- 📁 **[Local Docs](docs/)** - Documentation files in repository
-```
-
-## 🐛 Sorun Giderme
-
-### GitHub Pages Görünmüyor
-
-1. **Settings kontrolü:**
-   - Settings > Pages'te source doğru mu?
-   - Branch `main` seçili mi?
-   - Folder `/docs` seçili mi?
-
-2. **Bekleme süresi:**
-   - İlk yayınlama 5-10 dakika sürebilir
-   - Birkaç dakika bekleyin ve sayfayı yenileyin
-
-3. **Repository durumu:**
-   - Repository public mi? (Private repo'lar için GitHub Pro gerekir)
-
-4. **Build hataları:**
-   - Actions sekmesinde build loglarını kontrol edin
-   - `_config.yml` dosyasında syntax hatası var mı?
-
-### Wiki Görünmüyor
-
-1. **Settings kontrolü:**
-   - Settings > Features'te Wikis aktif mi?
-
-2. **İlk sayfa:**
-   - Wiki'de en az bir sayfa olmalı (Home.md)
-
-3. **Repository erişimi:**
-   - Wiki repository'sine erişim izniniz var mı?
-   - `https://github.com/kursadaltan/kemalwaf.wiki` adresine erişebiliyor musunuz?
-
-### Otomatik Sync Çalışmıyor
-
-1. **GitHub Actions:**
-   - Actions sekmesinde workflow çalışıyor mu?
-   - Hata mesajları var mı?
-
-2. **Token izinleri:**
-   - `GITHUB_TOKEN` otomatik olarak ayarlanır
-   - Eğer çalışmıyorsa, Personal Access Token ekleyebilirsiniz
-
-3. **Manuel sync:**
-   - `./scripts/sync-wiki.sh` scriptini manuel çalıştırın
-
-## 🎉 Tamamlandı!
-
-Her şey hazır! Artık dokümantasyonunuz:
-
-1. ✅ **GitHub Pages'te** yayınlanıyor
-2. ✅ **GitHub Wiki'de** erişilebilir
-3. ✅ **Otomatik senkronize** oluyor
-
-Her `docs/` klasöründeki değişiklik otomatik olarak:
-- GitHub Pages'e yansır (birkaç dakika içinde)
-- GitHub Wiki'ye sync olur (GitHub Actions ile)
-
-## 📚 Ek Kaynaklar
-
-- [GitHub Pages Documentation](https://docs.github.com/en/pages)
-- [GitHub Wiki Documentation](https://docs.github.com/en/communities/documenting-your-project-with-wikis)
-- [Jekyll Themes](https://jekyllthemes.io/)
-
+- **Repo docs:** https://github.com/kursadaltan/kemalwaf/tree/main/docs

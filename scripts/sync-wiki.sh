@@ -1,11 +1,13 @@
 #!/bin/bash
 
-# Sync documentation to GitHub Wiki
+# OPSIYONEL: Wiki'yi yerelde senkronize eder.
+# Asıl yöntem GitHub Actions'tır (elle repo oluşturmanız gerekmez).
+# Bkz: docs/ACTIVATION_GUIDE.md
+#
 # Usage: ./scripts/sync-wiki.sh
-# 
 # Environment variables:
 #   GITHUB_TOKEN - Personal Access Token (for HTTPS)
-#   GITHUB_USER - GitHub username (for SSH, defaults to 'kursadaltan')
+#   GITHUB_USER  - GitHub username (default: kursadaltan)
 
 set -e
 
