@@ -1,109 +1,103 @@
-# GitHub Pages ve Wiki Aktivasyon Rehberi
+# GitHub Pages & Wiki Setup
 
-Bu rehber, kemal-waf dokümantasyonunu GitHub Pages ve Wiki'de aktifleştirmek için adım adım talimatlar içerir. **Wiki tamamen GitHub Actions ile senkronize edilir; elle wiki repo oluşturmanıza gerek yok.**
+How to turn on the docs site (GitHub Pages) and the wiki. **The wiki is updated automatically by GitHub Actions—you don’t create or edit the wiki repo by hand.**
 
 ---
 
-## 1. GitHub Pages
+## 1. GitHub Pages (docs site)
 
 1. Repo **Settings** → **Pages**
 2. **Source:** Branch `main`, Folder **/docs**
 3. **Save**
-4. Birkaç dakika sonra: **https://kursadaltan.github.io/kemalwaf/**
+4. In a few minutes the site is live at: **https://kursadaltan.github.io/kemalwaf/**
 
 ---
 
-## 2. GitHub Wiki (sadece Actions, elle repo yok)
+## 2. GitHub Wiki (auto-synced from docs)
 
-### Adım 1: Wikis’i aç
+### Turn on Wikis
 
 1. Repo **Settings** → **General**
-2. **Features** bölümünde **Wikis** işaretle
+2. Under **Features**, check **Wikis**
 3. **Save**
 
-### Adım 2: Wiki’yi ilk kez oluştur
+### Create the first wiki page
 
-Wiki repo’nun oluşması için GitHub’da en az bir sayfa gerekir:
+GitHub only creates the wiki repo after at least one page exists:
 
-1. Repo ana sayfasında **Wiki** sekmesine tıkla  
-   veya: **https://github.com/kursadaltan/kemalwaf/wiki**
-2. **Create the first page** (veya “New Page”)
-3. Başlık: `Home`, içerik: `# Welcome` (veya boş)
+1. Open the **Wiki** tab (or go to **https://github.com/kursadaltan/kemalwaf/wiki**)
+2. Click **Create the first page**
+3. Title: `Home`, body: `# Welcome` (or leave empty)
 4. **Save Page**
 
-Böylece `kemalwaf.wiki` repo’su oluşur. İçeriği elle doldurmayın; Actions dolduracak.
+That creates the wiki repo. Don’t add content by hand—the Actions workflow will fill it from `docs/`.
 
-### Adım 3: Secret ekle (Actions’ın wiki’ye yazması için)
+### Add a secret so Actions can push
 
-1. GitHub’da **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+1. GitHub **Settings** (your account) → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
 2. **Generate new token (classic)**
-3. İsim: `Wiki Sync`, süre: istediğiniz
-4. İzin: **repo** (Full control of private repositories)
-5. **Generate token** → token’ı kopyala (bir daha gösterilmez)
-6. Repo’ya dön: **Settings** → **Secrets and variables** → **Actions**
+3. Name: `Wiki Sync`, expiration: your choice
+4. Scope: **repo**
+5. **Generate token** and copy it (you won’t see it again)
+6. Back in the repo: **Settings** → **Secrets and variables** → **Actions**
 7. **New repository secret**
-8. Name: **`WIKI_GITHUB_TOKEN`**  
-   Value: az önce kopyaladığınız token
+8. Name: **`WIKI_GITHUB_TOKEN`**, Value: the token you copied
 9. **Add secret**
 
-### Adım 4: Workflow’u tetikle
+### Run the workflow
 
-- **Seçenek A:** `docs/` içinde bir değişiklik yapıp `main`’e push edin → “Sync Docs to Wiki” workflow’u otomatik çalışır.
-- **Seçenek B:** **Actions** → **Sync Docs to Wiki** → **Run workflow** → **Run workflow**
+- **A:** Change something in `docs/` and push to `main` → the “Sync Docs to Wiki” workflow runs on its own.
+- **B:** **Actions** → **Sync Docs to Wiki** → **Run workflow**
 
-İlk çalışmada Actions, `docs/` içeriğini wiki’ye kopyalayıp günceller. Sonraki her `docs/` değişikliğinde wiki otomatik güncellenir.
-
----
-
-## Özet
-
-| Ne yapacaksınız | Nerede |
-|-----------------|--------|
-| Wikis’i açmak | Settings → General → Features → Wikis |
-| İlk wiki sayfası (Home) | Wiki sekmesi → Create the first page |
-| Secret `WIKI_GITHUB_TOKEN` | Settings → Secrets and variables → Actions |
-| Wiki içeriğini doldurmak | **Hiçbir şey** – GitHub Actions yapar |
-
-Elle wiki repo clone etmeniz veya lokal script çalıştırmanız gerekmez.
+The first run copies `docs/` into the wiki. After that, any push that touches `docs/` updates the wiki automatically.
 
 ---
 
-## Kontrol listesi
+## Summary
 
-### GitHub Pages
+| Step | Where |
+|------|--------|
+| Enable Wikis | Settings → General → Features → Wikis |
+| Create first page | Wiki tab → Create the first page |
+| Add secret | Settings → Secrets and variables → Actions → `WIKI_GITHUB_TOKEN` |
+| Wiki content | Handled by GitHub Actions |
+
+No need to clone the wiki repo or run scripts locally.
+
+---
+
+## Checklist
+
+**Pages**
+
 - [ ] Settings → Pages: Branch `main`, Folder `/docs`
-- [ ] https://kursadaltan.github.io/kemalwaf/ açılıyor
+- [ ] https://kursadaltan.github.io/kemalwaf/ works
 
-### GitHub Wiki
-- [ ] Settings → Features → Wikis işaretli
-- [ ] Wiki’de “Create the first page” ile bir sayfa oluşturuldu
-- [ ] Secret: **WIKI_GITHUB_TOKEN** eklendi
-- [ ] Actions’ta “Sync Docs to Wiki” bir kez başarıyla çalıştı
-- [ ] https://github.com/kursadaltan/kemalwaf/wiki dolu ve güncel
+**Wiki**
 
----
-
-## Sorun giderme
-
-### “WIKI_GITHUB_TOKEN secret tanımlı değil”
-- Repo **Settings** → **Secrets and variables** → **Actions**
-- Secret adı tam olarak **`WIKI_GITHUB_TOKEN`** olmalı
-- Değer: `repo` yetkili Personal Access Token
-
-### “Wiki clone edilemedi”
-- Wikis açık mı? (Settings → General → Features → Wikis)
-- Wiki’de en az bir sayfa var mı? (Wiki → Create the first page / New Page)
-- Sayfa kaydettikten sonra workflow’u tekrar çalıştırın.
-
-### Wiki güncellenmiyor
-- **Actions** sekmesinde “Sync Docs to Wiki” son çalıştırmasına bakın
-- Hata varsa log’u inceleyin
-- `docs/` değişikliği yapıp push ettiğinizde workflow tetiklenir; path filtresi `docs/**` ve `sync-wiki.yml` değişikliklerini içerir.
+- [ ] Wikis enabled in Settings → Features
+- [ ] At least one page created on the Wiki tab
+- [ ] Secret `WIKI_GITHUB_TOKEN` added
+- [ ] “Sync Docs to Wiki” has run once successfully
+- [ ] https://github.com/kursadaltan/kemalwaf/wiki has content
 
 ---
 
-## Erişim linkleri
+## Troubleshooting
+
+**“WIKI_GITHUB_TOKEN secret is not set”**  
+Add it under repo **Settings** → **Secrets and variables** → **Actions**. Name must be exactly `WIKI_GITHUB_TOKEN`. Use a Personal Access Token with **repo** scope.
+
+**“Wiki clone failed”**  
+Make sure Wikis is enabled and you’ve created at least one page on the Wiki tab. Then run the workflow again.
+
+**Wiki not updating**  
+Check the **Actions** tab for “Sync Docs to Wiki.” If it failed, look at the logs. The workflow runs when you push changes under `docs/` or the workflow file.
+
+---
+
+## Links
 
 - **GitHub Pages:** https://kursadaltan.github.io/kemalwaf/
-- **GitHub Wiki:** https://github.com/kursadaltan/kemalwaf/wiki
+- **Wiki:** https://github.com/kursadaltan/kemalwaf/wiki
 - **Repo docs:** https://github.com/kursadaltan/kemalwaf/tree/main/docs

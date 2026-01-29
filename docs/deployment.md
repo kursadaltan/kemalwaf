@@ -1,8 +1,8 @@
-# Deployment Guide
+# Deployment
 
-This guide covers production deployment strategies for kemal-waf.
+How to run kemal-waf in production: Docker, Compose, Nginx, and Kubernetes.
 
-## Production Checklist
+## Before you go live
 
 Before deploying to production:
 

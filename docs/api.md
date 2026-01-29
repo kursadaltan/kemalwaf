@@ -1,8 +1,8 @@
 # API Reference
 
-Kemal WAF provides several HTTP endpoints for health checks, metrics, and monitoring.
+HTTP endpoints for health checks, metrics, and the admin API.
 
-## Health Check
+## Health check
 
 ### GET `/health`
 

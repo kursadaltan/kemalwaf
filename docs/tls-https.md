@@ -1,8 +1,8 @@
-# TLS/HTTPS Configuration
+# TLS/HTTPS
 
-Kemal WAF supports TLS (HTTPS) with multiple certificate options and SNI (Server Name Indication) support for multi-domain deployments.
+kemal-waf supports HTTPS with your own certs, self-signed (dev only), per-domain (SNI), or Let's Encrypt.
 
-## Option 1: Global Certificate Files
+## Option 1: Global certificate files
 
 For a single domain or wildcard certificate:
 
@@ -16,7 +16,7 @@ waf:
       key_file: /path/to/key.pem
 ```
 
-## Option 2: Auto-Generated Self-Signed Certificate
+## Option 2: Self-signed cert (dev only)
 
 For testing and development:
 
@@ -32,7 +32,7 @@ waf:
 
 **⚠️ Warning:** Self-signed certificates are for testing/development only. Do not use in production!
 
-## Option 3: SNI - Per-Domain Certificates
+## Option 3: SNI (per-domain certs)
 
 For multi-domain deployments, each domain can have its own certificate:
 
@@ -54,7 +54,7 @@ waf:
       key_file: /etc/letsencrypt/live/api.example.com/privkey.pem
 ```
 
-## Option 4: Let's Encrypt Auto-Certificate
+## Option 4: Let's Encrypt
 
 Kemal WAF can automatically obtain and renew Let's Encrypt certificates:
 

@@ -1,55 +1,29 @@
-# Documentation Index
+# Documentation
 
-Welcome to kemal-waf documentation! This directory contains comprehensive guides for installation, configuration, and deployment.
+Guides for installing, configuring, and running kemal-waf.
 
-## Getting Started
+## Get started
 
-- [Installation Guide](installation.md) - How to install and run kemal-waf
-- [Configuration Guide](configuration.md) - Complete configuration reference
-- [Quick Start](installation.md#quick-start-with-docker-compose) - Get up and running in 5 minutes
+- **[Installation](installation.md)** — Quick install from Docker Hub (no clone), custom config, Compose
+- **[Configuration](configuration.md)** — WAF config file and options
 
-## Core Documentation
+## Guides
 
-### Setup & Configuration
-- [Installation](installation.md) - Installation methods (Docker, manual, etc.)
-- [Configuration](configuration.md) - WAF configuration file reference
-- [Environment Variables](environment-variables.md) - All environment variables
-- [Rule Format](rules.md) - How to write and manage WAF rules
+- **[Rules](rules.md)** — Rule format and how to add rules
+- **[TLS/HTTPS](tls-https.md)** — SSL and Let's Encrypt
+- **[Deployment](deployment.md)** — Production setup
+- **[Nginx](nginx-setup.md)** — Run behind a reverse proxy
 
-### Security & TLS
-- [TLS/HTTPS Setup](tls-https.md) - SSL/TLS configuration and Let's Encrypt
-- [GeoIP Filtering](geoip.md) - Country-based access control
+## Reference
 
-### Deployment
-- [Deployment Guide](deployment.md) - Production deployment strategies
-- [Nginx Setup](nginx-setup.md) - Reverse proxy configuration
-- [API Reference](api.md) - API endpoints and usage
+- **[Environment variables](environment-variables.md)** — All env vars
+- **[GeoIP](GEOIP.md)** — Country-based blocking
+- **[API](api.md)** — Health, metrics, admin API
 
-## Documentation Structure
+## Other
 
-```
-.github/docs/
-├── README.md (this file)
-├── installation.md
-├── configuration.md
-├── rules.md
-├── deployment.md
-├── nginx-setup.md
-├── tls-https.md
-├── api.md
-├── environment-variables.md
-└── geoip.md
-```
+- [Main README](../README.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Changelog](../CHANGELOG.md)
 
-## Quick Links
-
-- **Main README:** [../README.md](../README.md)
-- **Contributing:** [../CONTRIBUTING.md](../CONTRIBUTING.md)
-- **Changelog:** [../CHANGELOG.md](../CHANGELOG.md)
-
-## Need Help?
-
-- Open an issue on [GitHub](https://github.com/kursadaltan/kemalwaf/issues)
-- Check existing issues and discussions
-- Review the [Configuration Guide](configuration.md) for common settings
-
+**Questions?** Open an [issue](https://github.com/kursadaltan/kemalwaf/issues) or check the [Configuration](configuration.md) guide.

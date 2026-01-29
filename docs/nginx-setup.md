@@ -1,15 +1,12 @@
-# Nginx Reverse Proxy Configuration
+# Nginx Reverse Proxy
 
-This guide shows how to deploy kemal-waf Admin Panel behind Nginx reverse proxy.
+Run the admin panel behind Nginx (e.g. at `https://yourdomain.com/admin/`).
 
-## Overview
+**You need to:**  
+1. Build the image with subpath support (`VITE_BASE_PATH=/admin/`)  
+2. Configure Nginx to proxy to the WAF and admin ports  
 
-When deploying the Admin Panel behind Nginx (e.g., at `https://yourdomain.com/admin/`), you need to:
-
-1. Build the Docker image with subpath support
-2. Configure Nginx to proxy requests correctly
-
-## Build with Subpath Support
+## Build with subpath support
 
 ### Option 1: Using Make
 

@@ -1,24 +1,22 @@
-# Configuration Guide
+# Configuration
 
-Kemal WAF is configured via the `config/waf.yml` file. See `config/waf.yml.example` for a complete example.
+You configure kemal-waf with `config/waf.yml`. See `config/waf.yml.example` for a full example.
 
-## Configuration File Structure
+## What you can configure
 
-The configuration file supports:
 - Multi-domain upstream routing
 - WAF mode (enforce, observe, disabled)
-- Rate limiting settings
-- IP filtering (whitelist/blacklist)
+- Rate limiting
+- IP whitelist/blacklist
 - GeoIP blocking
 - Rule directory and reload interval
-- Logging configuration
-- Metrics settings
-- TLS/HTTPS configuration
-- HTTP/HTTPS server settings
+- Logging
+- Metrics
+- TLS/HTTPS and HTTP/HTTPS server settings
 
-## Basic Configuration
+## Basic configuration
 
-### Minimal Configuration
+### Minimal
 
 ```yaml
 waf:
@@ -28,7 +26,7 @@ waf:
       default_upstream: "http://localhost:8080"
 ```
 
-### Full Configuration Example
+### Full example
 
 ```yaml
 waf:

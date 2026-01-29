@@ -1,8 +1,8 @@
-# Rule Format Guide
+# Rule Format
 
-Kemal WAF supports YAML-based rule definitions with multiple operators and transformations.
+Rules are YAML files. You can use simple patterns or full OWASP-style rules with multiple operators and transforms.
 
-## Simple Format (Backward Compatible)
+## Simple format (backward compatible)
 
 ```yaml
 ---

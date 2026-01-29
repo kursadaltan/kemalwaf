@@ -1,5 +1,5 @@
-# Wiki'yi docs/ klasöründen otomatik senkronize eder.
-# Elle wiki repo oluşturmanıza gerek yok; sadece Settings'te Wikis'i açın ve WIKI_GITHUB_TOKEN secret ekleyin.
+# Syncs the wiki from the docs/ folder. No need to create the wiki repo manually;
+# enable Wikis in Settings and add the WIKI_GITHUB_TOKEN secret.
 
 name: Sync Docs to Wiki
 
@@ -28,11 +28,11 @@ jobs:
           WIKI_TOKEN: ${{ secrets.WIKI_GITHUB_TOKEN }}
         run: |
           if [ -z "$WIKI_TOKEN" ]; then
-            echo "::error::WIKI_GITHUB_TOKEN secret tanımlı değil. Repo Settings > Secrets and variables > Actions bölümünden ekleyin. Rehber: docs/ACTIVATION_GUIDE.md"
+            echo "::error::WIKI_GITHUB_TOKEN secret is not set. Add it under Repo Settings > Secrets and variables > Actions. See docs/ACTIVATION_GUIDE.md"
             exit 1
           fi
           git clone https://${WIKI_TOKEN}@github.com/kursadaltan/kemalwaf.wiki.git wiki || {
-            echo "::error::Wiki clone edilemedi. Lütfen: 1) Repo Settings > General > Features'te 'Wikis' işaretleyin. 2) Wiki sekmesine gidip 'Create the first page' ile bir sayfa oluşturun (wiki repo böyle oluşur). 3) Bu workflow'u tekrar çalıştırın."
+            echo "::error::Wiki clone failed. Please: 1) Enable 'Wikis' under Repo Settings > General > Features. 2) Open the Wiki tab and create the first page (this creates the wiki repo). 3) Re-run this workflow."
             exit 1
           }
 
@@ -90,7 +90,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           if git diff --staged --quiet; then
-            echo "Wiki'de değişiklik yok, push atlanıyor."
+            echo "No changes in wiki, skipping push."
           else
             git commit -m "Sync docs from main repo - $(date -u +%Y-%m-%d)"
             git push https://x-access-token:${WIKI_TOKEN}@github.com/kursadaltan/kemalwaf.wiki.git HEAD:master

@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# OPSIYONEL: Wiki'yi yerelde senkronize eder.
-# Asıl yöntem GitHub Actions'tır (elle repo oluşturmanız gerekmez).
-# Bkz: docs/ACTIVATION_GUIDE.md
+# OPTIONAL: Sync the wiki locally. The primary method is GitHub Actions (no manual wiki repo setup).
+# See: docs/ACTIVATION_GUIDE.md
 #
 # Usage: ./scripts/sync-wiki.sh
 # Environment variables:
