@@ -47,7 +47,7 @@ jobs:
           cp docs/tls-https.md wiki/TLS-HTTPS.md
           cp docs/api.md wiki/API-Reference.md
           cp docs/environment-variables.md wiki/Environment-Variables.md
-          cp docs/geoip.md wiki/GeoIP-Filtering.md
+          cp docs/GEOIP.md wiki/GeoIP-Filtering.md
           cat > wiki/_Sidebar.md << 'SIDEBAR'
           ## Getting Started
           - [[Home]]

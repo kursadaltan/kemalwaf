@@ -56,7 +56,7 @@ cp docs/nginx-setup.md "$WIKI_REPO/Nginx-Setup.md"
 cp docs/tls-https.md "$WIKI_REPO/TLS-HTTPS.md"
 cp docs/api.md "$WIKI_REPO/API-Reference.md"
 cp docs/environment-variables.md "$WIKI_REPO/Environment-Variables.md"
-cp docs/geoip.md "$WIKI_REPO/GeoIP-Filtering.md"
+cp docs/GEOIP.md "$WIKI_REPO/GeoIP-Filtering.md"
 
 # Create sidebar
 cat > "$WIKI_REPO/_Sidebar.md" << 'EOF'
